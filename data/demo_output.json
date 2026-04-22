@@ -1,0 +1,99 @@
+{
+  "executiveSummary": {
+    "headlineFinding": "Conversion from new lead to booked meeting is running at 44.2% — well below what the pipeline should be delivering — because too many leads are receiving slow or inconsistent follow-up before a meeting is scheduled.",
+    "whyItMatters": "With a median first response of 9.6 hours against a 4-hour SLA, and 26.7% of leads flagged for missed follow-up, a significant share of qualified demand is going cold before it ever reaches a booking.",
+    "primaryCause": "The strongest operational signal is delayed first response. Leads contacted within 4 hours convert at 65.8%, while leads contacted after 24 hours convert at only 15.8% — a 50 percentage-point gap that is the clearest driver of pipeline leakage.",
+    "recommendedAction": "Enforce a 4-business-hour first-response SLA immediately, require a logged next step on every qualified lead before end of day, and escalate any lead with no activity after 48 hours to the pipeline manager.",
+    "monitoringPlan": "Track conversion rate from new lead to booked meeting weekly, monitor median first-response time daily, and alert when stalled lead rate exceeds 15% or any high-value lead goes untouched past SLA."
+  },
+  "problemDefinition": {
+    "workflow": "Lead Intake and Conversion Bottleneck",
+    "businessProblem": "Meridian Professional Services is generating inbound leads but converting only 44% of them to booked meetings. The workflow is designed to move leads from intake to meeting quickly, but delayed first response and missed follow-up are allowing too many qualified leads to stall or go cold before a meeting is ever scheduled. The team cannot clearly see where leads are dropping or which owners need to improve.",
+    "affectedGroup": "Intake coordinators, sales and business-development owners, and the pipeline manager responsible for conversion outcomes.",
+    "successMetric": "Conversion rate from new lead to booked meeting.",
+    "scope": "Lead intake through booked meeting only. Post-meeting steps and downstream revenue tracking are out of scope."
+  },
+  "rootCauseAnalysis": {
+    "topLeakagePoint": "The largest leakage is occurring between first contact and booked meeting, where leads with delayed first response and missed follow-up stall in the Contacted or Qualified stage and rarely advance to a scheduled meeting.",
+    "rankedCauses": [
+      {
+        "rank": 1,
+        "factor": "Delayed first response",
+        "finding": "Leads contacted within 4 hours convert at 65.8%, while leads not reached until after 24 hours convert at only 15.8% — a 50 percentage-point difference that is the dominant driver of pipeline leakage."
+      },
+      {
+        "rank": 2,
+        "factor": "Owner performance gap",
+        "finding": "Jordan converts 28% of assigned leads while Alex converts 66.7%, a 38.7 percentage-point gap that is most likely tied to differences in response speed and follow-up consistency rather than lead quality."
+      },
+      {
+        "rank": 3,
+        "factor": "Missed follow-up",
+        "finding": "Leads with a missed follow-up flag convert at 18.8%, compared to 53.4% for leads with consistent follow-up — a 34.6 percentage-point gap that amplifies the impact of slow initial response."
+      }
+    ],
+    "supportingComparison": "Leads contacted within SLA (65.8% conversion) outperform delayed leads (15.8% conversion) by 50 percentage points, making response speed the single strongest predictor of whether a lead reaches a booked meeting.",
+    "segmentInsight": "Jordan is the lowest-converting owner at 28%, compared to the team average of 44.2% and the top performer at 66.7%. Addressing Jordan's response and follow-up habits is the highest-priority owner-level action."
+  },
+  "recommendation": {
+    "firstAction": "The first change should be enforcing a 4-business-hour first-response SLA for all new leads and requiring a documented next step on every qualified lead before end of business day. Any lead with no recorded activity for 48 hours should automatically escalate to the pipeline manager for review.",
+    "whyThisFirst": "Delayed first response is responsible for a 50 percentage-point conversion gap — addressing it directly targets the largest single driver of pipeline leakage before any other factor.",
+    "expectedEffect": "Bringing median first-response time within SLA should materially improve conversion within 2 to 4 weeks, as leads that were previously going cold begin advancing to the Qualified and Meeting Scheduled stages.",
+    "owner": "Pipeline manager, with weekly review of response-time compliance and stalled lead counts across all owners."
+  },
+  "workflowSOP": {
+    "title": "Lead Intake Follow-Up Standard",
+    "objective": "Ensure every inbound lead receives timely, consistent follow-up so that qualified demand reaches a booked meeting without stalling.",
+    "bullets": [
+      "All new leads must receive a first response within 4 business hours of intake.",
+      "Every qualified lead must have a logged next step before the end of the same business day.",
+      "Any lead with no recorded activity for 48 hours escalates automatically to the pipeline manager.",
+      "High-value leads (estimated deal value above $10,000) may not remain untouched for more than 1 business day.",
+      "Lead ownership must remain assigned and visible from intake through meeting scheduling — ownership gaps are not acceptable.",
+      "Missed follow-up flags must be reviewed weekly and addressed before they age past 72 hours."
+    ],
+    "escalation": "Any lead with no owner activity for 48 hours or any high-value lead untouched past 1 business day escalates immediately to the pipeline manager for reassignment or direct outreach.",
+    "owner": "Pipeline manager, with support from individual sales and intake owners for day-to-day compliance."
+  },
+  "monitoringReport": {
+    "issue": "Conversion from new lead to booked meeting is running at 44.2%, suppressed by a median first-response time of 9.6 hours against a 4-hour SLA, and a 26.7% missed follow-up rate that allows qualified leads to stall before reaching a meeting.",
+    "fix": "Enforcing a 4-business-hour first-response SLA, requiring documented next steps for all qualified leads, and escalating untouched leads at 48 hours to the pipeline manager.",
+    "metrics": "1. Conversion rate from new lead to booked meeting. 2. Median time to first follow-up. 3. Stalled lead rate as a percentage of active pipeline.",
+    "thresholds": "Alert if median first-response time exceeds 4 hours for 2 consecutive days. Alert if stalled lead rate exceeds 15% of active pipeline. Alert if weekly conversion rate falls below 40%. Alert if any high-value lead exceeds 1 business day without owner activity.",
+    "owner": "Pipeline manager owns all three metrics and is responsible for weekly reporting and owner-level coaching when thresholds are breached.",
+    "responsePlan": "If median first-response time drifts above SLA for more than 2 days, the pipeline manager reviews the prior week's leads for the affected owners and schedules a direct coaching conversation. If conversion rate falls below 40% for two consecutive weeks, a full pipeline review is conducted to identify whether the issue is response speed, follow-up discipline, or lead quality. Persistent underperformance triggers reassignment of leads from low-converting owners."
+  },
+  "controlDashboard": {
+    "conversionRateLabel": "Conversion Rate: 44.2%",
+    "medianResponseLabel": "Median First Response: 9.6h (SLA: 4h)",
+    "stalledRateLabel": "Stalled Lead Rate: 25.8%",
+    "segmentNeedingAttention": "Jordan — 28% conversion rate on 25 leads assigned, likely driven by slow response and inconsistent follow-up. Immediate coaching and SLA review recommended."
+  },
+  "alertRules": [
+    {
+      "trigger": "Median first-response time exceeds 4 business hours for 2 consecutive days",
+      "action": "Pipeline manager reviews all open leads and identifies which owners are missing SLA. Direct coaching scheduled within 24 hours.",
+      "severity": "critical"
+    },
+    {
+      "trigger": "Stalled lead rate exceeds 15% of active pipeline",
+      "action": "Pipeline manager pulls the full stalled lead list and assigns or re-activates within 1 business day.",
+      "severity": "warning"
+    },
+    {
+      "trigger": "Any high-value lead (deal value above $10,000) has no owner activity for more than 1 business day",
+      "action": "Pipeline manager contacts the assigned owner immediately and takes over outreach if no response within 2 hours.",
+      "severity": "critical"
+    },
+    {
+      "trigger": "Weekly conversion rate from new lead to booked meeting falls below 40%",
+      "action": "Pipeline manager conducts a full weekly review to identify whether response speed, follow-up discipline, or lead quality is driving the decline.",
+      "severity": "warning"
+    },
+    {
+      "trigger": "Missed follow-up rate exceeds 20% of active leads in the current week",
+      "action": "Pipeline manager reviews open leads with missed follow-up flags and re-assigns or contacts within the same business day.",
+      "severity": "warning"
+    }
+  ]
+}

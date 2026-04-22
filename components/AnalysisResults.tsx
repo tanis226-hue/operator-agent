@@ -135,15 +135,41 @@ export function AnalysisResults({ analysis, generated }: Props) {
             </ol>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="rounded-lg border border-line bg-canvas p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Response-time comparison</p>
-              <p className="mt-1 text-sm leading-relaxed text-ink">{rootCauseAnalysis.supportingComparison}</p>
+          {/* Visual: timely vs delayed response */}
+          <div className="rounded-lg border border-line bg-canvas p-4">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              Conversion rate by first-response speed
+            </p>
+            <div className="flex flex-col gap-3">
+              <ConversionBar
+                label="First response ≤ 4h (within SLA)"
+                rate={analysis.conversionWithTimely}
+                color="bg-accent"
+              />
+              <ConversionBar
+                label="First response > 24h (delayed)"
+                rate={analysis.conversionWithDelayed}
+                color="bg-red-400"
+              />
+              <ConversionBar
+                label="No missed follow-up"
+                rate={analysis.conversionNoMissedFollowup}
+                color="bg-accent/70"
+              />
+              <ConversionBar
+                label="Missed follow-up"
+                rate={analysis.conversionMissedFollowup}
+                color="bg-orange-400"
+              />
             </div>
-            <div className="rounded-lg border border-line bg-canvas p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Segment insight</p>
-              <p className="mt-1 text-sm leading-relaxed text-ink">{rootCauseAnalysis.segmentInsight}</p>
-            </div>
+            <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+              {rootCauseAnalysis.supportingComparison}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-line bg-canvas p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Segment insight</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink">{rootCauseAnalysis.segmentInsight}</p>
           </div>
 
           <div>
@@ -210,23 +236,23 @@ export function AnalysisResults({ analysis, generated }: Props) {
           <MetricCard
             label="Conversion rate"
             value={`${analysis.conversionRate}%`}
-            sub={controlDashboard.conversionRateLabel}
+            sub="New lead → booked meeting"
             highlight
           />
           <MetricCard
             label="Median first response"
             value={`${analysis.medianFirstResponseHours.toFixed(1)}h`}
-            sub="SLA: 4h"
-            alert
+            sub="SLA target: 4h"
+            alert={analysis.medianFirstResponseHours > 4}
           />
           <MetricCard
             label="Stalled lead rate"
             value={`${analysis.stalledLeadRate}%`}
-            sub="Threshold: 15%"
-            alert
+            sub="Alert threshold: 15%"
+            alert={analysis.stalledLeadRate > 15}
           />
-          <div className="flex flex-col gap-1 rounded-xl border border-line bg-canvas px-4 py-4">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Needs attention</span>
+          <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-orange-600">Needs attention</span>
             <span className="text-sm font-medium leading-snug text-ink">{controlDashboard.segmentNeedingAttention}</span>
           </div>
         </div>
@@ -271,6 +297,31 @@ export function AnalysisResults({ analysis, generated }: Props) {
         </dl>
       </PhaseCard>
 
+    </div>
+  );
+}
+
+function ConversionBar({
+  label,
+  rate,
+  color,
+}: {
+  label: string;
+  rate: number;
+  color: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ink-soft">{label}</span>
+        <span className="font-semibold text-ink">{rate}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${Math.min(rate, 100)}%` }}
+        />
+      </div>
     </div>
   );
 }
