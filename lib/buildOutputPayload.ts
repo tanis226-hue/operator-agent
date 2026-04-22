@@ -6,6 +6,21 @@ import type { GeneratedOutputPayload } from "./outputTypes";
 
 const MODEL = "claude-haiku-4-5-20251001";
 
+function extractJSON(raw: string): string {
+  // Strip markdown fences
+  let s = raw
+    .replace(/^```(?:json)?\s*/im, "")
+    .replace(/\s*```\s*$/im, "")
+    .trim();
+  // Find the outermost JSON object if there's surrounding text
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    s = s.slice(start, end + 1);
+  }
+  return s;
+}
+
 export async function buildOutputPayload(
   brief: IntakeBrief,
   analysis: PipelineAnalysis,
@@ -20,6 +35,8 @@ export async function buildOutputPayload(
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
+    system:
+      "You are a senior operations advisor. You output ONLY valid JSON objects — no prose, no markdown, no explanation. Your entire response must be parseable by JSON.parse().",
     messages: [
       {
         role: "user",
@@ -37,20 +54,8 @@ export async function buildOutputPayload(
   const rawText =
     response.content[0].type === "text" ? response.content[0].text : "";
 
-  // Strip any accidental markdown fences before parsing
-  const cleaned = rawText
-    .replace(/^```(?:json)?\s*/m, "")
-    .replace(/\s*```\s*$/m, "")
-    .trim();
+  const cleaned = extractJSON(rawText);
 
-  let payload: GeneratedOutputPayload;
-  try {
-    payload = JSON.parse(cleaned);
-  } catch {
-    throw new Error(
-      `Claude returned non-JSON response. Raw: ${rawText.slice(0, 500)}`
-    );
-  }
-
+  const payload = JSON.parse(cleaned) as GeneratedOutputPayload;
   return payload;
 }

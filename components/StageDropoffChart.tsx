@@ -16,10 +16,10 @@ type Props = {
 };
 
 const STAGE_COLORS: Record<string, string> = {
-  "New Lead": "#93c5fd",
-  Contacted: "#60a5fa",
-  Qualified: "#3b82f6",
-  "Meeting Scheduled": "#1d4ed8",
+  "New Lead": "#F0C4B0",
+  Contacted: "#E0A080",
+  Qualified: "#D08060",
+  "Meeting Scheduled": "#C96442",
   Lost: "#ef4444",
 };
 
@@ -34,12 +34,12 @@ export function StageDropoffChart({ data }: Props) {
         >
           <XAxis
             dataKey="stage"
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#A8A29E" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#A8A29E" }}
             axisLine={false}
             tickLine={false}
             width={28}

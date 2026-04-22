@@ -14,25 +14,31 @@ function loadDemoOutput(): GeneratedOutputPayload {
   return JSON.parse(fs.readFileSync(filePath, "utf-8")) as GeneratedOutputPayload;
 }
 
+function hasApiKey(): boolean {
+  const k = process.env.ANTHROPIC_API_KEY ?? "";
+  return k.trim().length > 0 && k !== "your_key_here";
+}
+
 export async function POST() {
   try {
     const { records, warnings } = loadDataset();
     const analysis = analyzePipeline(records);
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
     let generated: GeneratedOutputPayload;
     let usedFallback = false;
 
-    if (!apiKey || apiKey.trim() === "" || apiKey === "your_key_here") {
+    if (hasApiKey()) {
+      try {
+        const processNote = loadProcessNote();
+        generated = await buildOutputPayload(DEMO_INTAKE_BRIEF, analysis, processNote);
+      } catch {
+        // Live call failed — use pre-generated output rather than showing an error
+        generated = loadDemoOutput();
+        usedFallback = true;
+      }
+    } else {
       generated = loadDemoOutput();
       usedFallback = true;
-    } else {
-      const processNote = loadProcessNote();
-      generated = await buildOutputPayload(
-        DEMO_INTAKE_BRIEF,
-        analysis,
-        processNote
-      );
     }
 
     return NextResponse.json({

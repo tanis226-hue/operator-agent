@@ -8,12 +8,29 @@
 
 html,
 body {
-  background-color: #f7f8fa;
-  color: #0f172a;
+  background-color: #FAF9F7;
+  color: #1C1917;
 }
 
 body {
-  font-feature-settings: "cv11", "ss01";
+  font-feature-settings: "cv11", "ss01", "liga";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Eyebrow utility */
+@layer components {
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-widest text-ink-muted;
+  }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

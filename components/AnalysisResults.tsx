@@ -25,27 +25,22 @@ export function AnalysisResults({ analysis, generated }: Props) {
 
       {/* 1. Executive Summary */}
       <PhaseCard index={1} title="Executive Summary" eyebrow="Headline" variant="summary">
-        <div className="flex flex-col gap-4">
-          <p className="text-base font-medium leading-relaxed text-ink">
+        <div className="flex flex-col gap-5">
+          <p className="text-[15px] font-medium leading-relaxed text-ink">
             {executiveSummary.headlineFinding}
           </p>
-          <div className="grid grid-cols-1 gap-3 text-sm leading-relaxed text-ink-soft md:grid-cols-2">
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Business impact</span>
-              <span>{executiveSummary.whyItMatters}</span>
-            </div>
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Primary cause</span>
-              <span>{executiveSummary.primaryCause}</span>
-            </div>
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">First action</span>
-              <span>{executiveSummary.recommendedAction}</span>
-            </div>
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">What will be monitored</span>
-              <span>{executiveSummary.monitoringPlan}</span>
-            </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {[
+              ["Business impact", executiveSummary.whyItMatters],
+              ["Primary cause", executiveSummary.primaryCause],
+              ["First action", executiveSummary.recommendedAction],
+              ["How success will be monitored", executiveSummary.monitoringPlan],
+            ].map(([label, text]) => (
+              <div key={label} className="flex flex-col gap-1">
+                <span className="eyebrow">{label}</span>
+                <span className="text-[13px] leading-relaxed text-ink-soft">{text}</span>
+              </div>
+            ))}
           </div>
         </div>
       </PhaseCard>

@@ -28,12 +28,12 @@ export function OwnerComparisonChart({ data, baseline }: Props) {
         >
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#A8A29E" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#64748b" }}
+            tick={{ fontSize: 11, fill: "#A8A29E" }}
             axisLine={false}
             tickLine={false}
             width={32}
@@ -42,13 +42,13 @@ export function OwnerComparisonChart({ data, baseline }: Props) {
           />
           <ReferenceLine
             y={baseline}
-            stroke="#64748b"
+            stroke="#A8A29E"
             strokeDasharray="4 3"
             label={{
               value: `avg ${baseline}%`,
               position: "insideTopRight",
               fontSize: 10,
-              fill: "#64748b",
+              fill: "#A8A29E",
             }}
           />
           <Tooltip
@@ -65,7 +65,7 @@ export function OwnerComparisonChart({ data, baseline }: Props) {
               <Cell
                 key={entry.label}
                 fill={
-                  entry.conversionRate >= baseline ? "#1d4ed8" : "#ef4444"
+                  entry.conversionRate >= baseline ? "#C96442" : "#ef4444"
                 }
               />
             ))}
