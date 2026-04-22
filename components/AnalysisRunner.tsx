@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IntakeBriefCard } from "./IntakeBriefCard";
+import { IntakeBriefEditor } from "./IntakeBriefEditor";
 import { AnalysisResults } from "./AnalysisResults";
 import { PlaceholderResults } from "./PlaceholderResults";
 import type { PipelineAnalysis } from "@/lib/analyzePipeline";
@@ -11,6 +12,8 @@ import type { IntakeBrief } from "@/lib/intakeBrief";
 
 type RunState = "idle" | "running" | "done" | "error";
 
+type CaseMode = "demo" | "custom";
+
 type PhaseState = {
   phase: string;
   label: string;
@@ -19,7 +22,7 @@ type PhaseState = {
 };
 
 type AnalysisResponse = {
-  analysis: PipelineAnalysis;
+  analysis?: PipelineAnalysis;
   generated: GeneratedOutputPayload;
   pipelineLog: PipelineLog;
   usedFallback?: boolean;
@@ -45,6 +48,19 @@ const PIPELINE_PHASES: PhaseState[] = [
 
 type Props = { brief: IntakeBrief };
 
+const EMPTY_BRIEF: IntakeBrief = {
+  businessName: "",
+  workflowName: "",
+  painPoint: "",
+  successMetric: "",
+  slaConstraint: "",
+  currentStages: [],
+  availableEvidence: [],
+  qualifiedLeadDefinition: "",
+  suspectedStage: "",
+  biggestFrustration: "",
+};
+
 export function AnalysisRunner({ brief }: Props) {
   const [state, setState] = useState<RunState>("idle");
   const [phases, setPhases] = useState<PhaseState[]>(PIPELINE_PHASES);
@@ -53,8 +69,31 @@ export function AnalysisRunner({ brief }: Props) {
   const [completedAt, setCompletedAt] = useState("");
   const [briefOpen, setBriefOpen] = useState(true);
 
+  const [mode, setMode] = useState<CaseMode>("demo");
+  const [customBrief, setCustomBrief] = useState<IntakeBrief>(EMPTY_BRIEF);
+  const [customNote, setCustomNote] = useState("");
+
+  const isRunning = state === "running";
+  const isDone = state === "done";
+  const activeBrief = mode === "demo" ? brief : customBrief;
+
   async function handleRunAnalysis() {
     if (state === "running") return;
+
+    if (mode === "custom") {
+      const missing: string[] = [];
+      if (!customBrief.businessName.trim()) missing.push("business / team");
+      if (!customBrief.painPoint.trim()) missing.push("pain point");
+      if (!customBrief.successMetric.trim()) missing.push("success metric");
+      if (missing.length > 0) {
+        setErrorMsg(
+          `Please fill in: ${missing.join(", ")}. These feed the analysis prompt.`
+        );
+        setState("error");
+        return;
+      }
+    }
+
     setState("running");
     setPhases(PIPELINE_PHASES.map((p) => ({ ...p, status: "pending" })));
     setResult(null);
@@ -62,7 +101,16 @@ export function AnalysisRunner({ brief }: Props) {
     setBriefOpen(false);
 
     try {
-      const res = await fetch("/api/run-analysis", { method: "POST" });
+      const init: RequestInit = { method: "POST" };
+      if (mode === "custom") {
+        init.headers = { "Content-Type": "application/json" };
+        init.body = JSON.stringify({
+          brief: customBrief,
+          processNote: customNote,
+        });
+      }
+
+      const res = await fetch("/api/run-analysis", init);
 
       if (!res.body) {
         throw new Error("No response body");
@@ -134,14 +182,45 @@ export function AnalysisRunner({ brief }: Props) {
     }
   }
 
-  const isRunning = state === "running";
-  const isDone = state === "done";
+  function handleModeChange(next: CaseMode) {
+    if (isRunning) return;
+    setMode(next);
+    setErrorMsg("");
+    setState("idle");
+    setBriefOpen(true);
+    if (next === "custom" && customBrief === EMPTY_BRIEF) {
+      // Pre-seed empty — user fills in. Users can also click "Copy from demo" below.
+    }
+  }
+
+  function handleCopyFromDemo() {
+    setCustomBrief(brief);
+  }
 
   return (
     <>
+      {/* Case-source toggle */}
+      <CaseModeToggle
+        mode={mode}
+        onChange={handleModeChange}
+        disabled={isRunning}
+        onCopyFromDemo={handleCopyFromDemo}
+        showCopyFromDemo={mode === "custom"}
+      />
+
       {/* Intake brief — collapses to a compact banner after analysis runs */}
       {briefOpen ? (
-        <IntakeBriefCard brief={brief} />
+        mode === "demo" ? (
+          <IntakeBriefCard brief={brief} />
+        ) : (
+          <IntakeBriefEditor
+            brief={customBrief}
+            processNote={customNote}
+            onBriefChange={setCustomBrief}
+            onProcessNoteChange={setCustomNote}
+            disabled={isRunning}
+          />
+        )
       ) : (
         <button
           type="button"
@@ -149,9 +228,13 @@ export function AnalysisRunner({ brief }: Props) {
           className="flex w-full items-center justify-between rounded-card border border-line bg-surface px-6 py-3 text-sm shadow-card transition hover:bg-canvas"
         >
           <div className="flex items-center gap-2">
-            <span className="font-medium text-ink">{brief.businessName}</span>
+            <span className="font-medium text-ink">
+              {activeBrief.businessName || "Custom case"}
+            </span>
             <span className="text-ink-muted">·</span>
-            <span className="text-ink-soft">{brief.workflowName}</span>
+            <span className="text-ink-soft">
+              {activeBrief.workflowName || "—"}
+            </span>
           </div>
           <span className="text-xs text-ink-muted">Show intake brief ↓</span>
         </button>
@@ -168,7 +251,9 @@ export function AnalysisRunner({ brief }: Props) {
               Run analysis
             </h2>
             <p className="mt-1 text-sm text-ink-soft">
-              Uses the intake brief, local pipeline data, and process note.
+              {mode === "demo"
+                ? "Uses the intake brief, local pipeline data, and process note."
+                : "Uses your intake brief and process note with local pipeline data."}
             </p>
           </div>
 
@@ -185,7 +270,9 @@ export function AnalysisRunner({ brief }: Props) {
             )}
             {state === "error" && (
               <span className="text-xs font-medium text-red-500">
-                Failed — check ANTHROPIC_API_KEY in .env.local
+                {errorMsg && errorMsg.length < 80
+                  ? errorMsg
+                  : "Failed — see details below"}
               </span>
             )}
             <button
@@ -239,6 +326,92 @@ export function AnalysisRunner({ brief }: Props) {
         <PlaceholderResults />
       )}
     </>
+  );
+}
+
+function CaseModeToggle({
+  mode,
+  onChange,
+  disabled,
+  onCopyFromDemo,
+  showCopyFromDemo,
+}: {
+  mode: CaseMode;
+  onChange: (next: CaseMode) => void;
+  disabled: boolean;
+  onCopyFromDemo: () => void;
+  showCopyFromDemo: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-card">
+      <div className="flex items-center gap-3">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+          Case
+        </span>
+        <div
+          role="tablist"
+          aria-label="Case mode"
+          className="inline-flex rounded-md border border-line bg-canvas p-0.5"
+        >
+          <ToggleTab
+            active={mode === "demo"}
+            onClick={() => onChange("demo")}
+            disabled={disabled}
+          >
+            Demo
+          </ToggleTab>
+          <ToggleTab
+            active={mode === "custom"}
+            onClick={() => onChange("custom")}
+            disabled={disabled}
+          >
+            My own case
+          </ToggleTab>
+        </div>
+      </div>
+
+      {showCopyFromDemo && (
+        <button
+          type="button"
+          onClick={onCopyFromDemo}
+          disabled={disabled}
+          className="text-[12px] font-medium text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Copy demo values as a starting point →
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ToggleTab({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "rounded px-3 py-1 text-[12px] font-medium transition",
+        active
+          ? "bg-surface text-ink shadow-sm"
+          : "text-ink-muted hover:text-ink",
+        disabled ? "cursor-not-allowed opacity-50" : "",
+      ].join(" ")}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -9,7 +9,7 @@ import type { PipelineAnalysis } from "@/lib/analyzePipeline";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
 
 type Props = {
-  analysis: PipelineAnalysis;
+  analysis?: PipelineAnalysis;
   generated: GeneratedOutputPayload;
 };
 
@@ -19,15 +19,32 @@ const SEVERITY_STYLES = {
 };
 
 export function AnalysisResults({ analysis, generated }: Props) {
-  const { executiveSummary, problemDefinition, rootCauseAnalysis, recommendation, workflowSOP, monitoringReport, controlDashboard, alertRules } = generated;
-  const responseGap = analysis.conversionWithTimely - analysis.conversionWithDelayed;
-  const followupGap = analysis.conversionNoMissedFollowup - analysis.conversionMissedFollowup;
+  const {
+    executiveSummary,
+    problemDefinition,
+    rootCauseAnalysis,
+    recommendation,
+    workflowSOP,
+    monitoringReport,
+    controlDashboard,
+    alertRules,
+  } = generated;
+
+  const responseGap = analysis
+    ? analysis.conversionWithTimely - analysis.conversionWithDelayed
+    : null;
+  const followupGap = analysis
+    ? analysis.conversionNoMissedFollowup - analysis.conversionMissedFollowup
+    : null;
+
+  // Section indices shift down by 1 when the Measure section is absent
+  const idx = (demo: number) => (analysis ? demo : demo - 1);
 
   return (
     <div className="flex flex-col gap-5">
 
-      {/* At-a-glance KPI strip */}
-      <InsightStrip analysis={analysis} />
+      {/* At-a-glance KPI strip — demo mode only */}
+      {analysis && <InsightStrip analysis={analysis} />}
 
       {/* 1. Executive Summary */}
       <PhaseCard index={1} title="Executive Summary" eyebrow="Headline" variant="summary">
@@ -69,76 +86,81 @@ export function AnalysisResults({ analysis, generated }: Props) {
         </dl>
       </PhaseCard>
 
-      {/* 3. Baseline Performance */}
-      <PhaseCard index={3} title="Baseline Performance" eyebrow="Measure">
-        <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard
-              label="Conversion rate"
-              value={`${analysis.conversionRate}%`}
-              sub="New lead → booked meeting"
-              highlight
-            />
-            <MetricCard
-              label="Median first response"
-              value={`${analysis.medianFirstResponseHours.toFixed(1)}h`}
-              sub="SLA target: 4 hours"
-              alert={analysis.medianFirstResponseHours > 4}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <MetricCard
-              label="Stalled lead rate"
-              value={`${analysis.stalledLeadRate}%`}
-              sub="Threshold: 15%"
-              alert={analysis.stalledLeadRate > 15}
-            />
-            <MetricCard
-              label="Missed follow-up rate"
-              value={`${analysis.missedFollowupRate}%`}
-              sub="Threshold: 20%"
-              alert={analysis.missedFollowupRate > 20}
-            />
-            <MetricCard
-              label="Avg deal value"
-              value={`$${analysis.avgDealValue.toLocaleString()}`}
-              sub={`$${Math.round((analysis.stalledLeads * analysis.avgDealValue) / 1000)}k at risk`}
-              alert={analysis.stalledLeads > 20}
-            />
-            <MetricCard
-              label="Total leads"
-              value={String(analysis.totalLeads)}
-              sub={`${analysis.bookedMeetings} booked · ${analysis.stalledLeads} stalled`}
-            />
-          </div>
-          <div>
-            <p className="mb-2 eyebrow">Leads by stage</p>
-            <StageDropoffChart data={analysis.stageDropoff} />
-          </div>
-          {analysis.bySource.length > 1 && (
-            <div>
-              <p className="mb-2 eyebrow">Conversion rate by lead source</p>
-              <OwnerComparisonChart data={analysis.bySource} baseline={analysis.conversionRate} />
+      {/* 3. Baseline Performance — demo mode only */}
+      {analysis && (
+        <PhaseCard index={3} title="Baseline Performance" eyebrow="Measure">
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard
+                label="Conversion rate"
+                value={`${analysis.conversionRate}%`}
+                sub="New lead → booked meeting"
+                highlight
+              />
+              <MetricCard
+                label="Median first response"
+                value={`${analysis.medianFirstResponseHours.toFixed(1)}h`}
+                sub="SLA target: 4 hours"
+                alert={analysis.medianFirstResponseHours > 4}
+              />
             </div>
-          )}
-        </div>
-      </PhaseCard>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <MetricCard
+                label="Stalled lead rate"
+                value={`${analysis.stalledLeadRate}%`}
+                sub="Threshold: 15%"
+                alert={analysis.stalledLeadRate > 15}
+              />
+              <MetricCard
+                label="Missed follow-up rate"
+                value={`${analysis.missedFollowupRate}%`}
+                sub="Threshold: 20%"
+                alert={analysis.missedFollowupRate > 20}
+              />
+              <MetricCard
+                label="Avg deal value"
+                value={`$${analysis.avgDealValue.toLocaleString()}`}
+                sub={`$${Math.round((analysis.stalledLeads * analysis.avgDealValue) / 1000)}k at risk`}
+                alert={analysis.stalledLeads > 20}
+              />
+              <MetricCard
+                label="Total leads"
+                value={String(analysis.totalLeads)}
+                sub={`${analysis.bookedMeetings} booked · ${analysis.stalledLeads} stalled`}
+              />
+            </div>
+            <div>
+              <p className="mb-2 eyebrow">Leads by stage</p>
+              <StageDropoffChart data={analysis.stageDropoff} />
+            </div>
+            {analysis.bySource.length > 1 && (
+              <div>
+                <p className="mb-2 eyebrow">Conversion rate by lead source</p>
+                <OwnerComparisonChart data={analysis.bySource} baseline={analysis.conversionRate} />
+              </div>
+            )}
+          </div>
+        </PhaseCard>
+      )}
 
-      {/* 4. Root-Cause Analysis */}
-      <PhaseCard index={4} title="Root-Cause Analysis" eyebrow="Analyze">
+      {/* Root-Cause Analysis */}
+      <PhaseCard index={idx(4)} title="Root-Cause Analysis" eyebrow="Analyze">
         <div className="flex flex-col gap-5">
           <div className="rounded-lg border border-line bg-canvas p-4">
-            <p className="eyebrow mb-1">Top leakage point</p>
+            <p className="eyebrow mb-1">Top failure point</p>
             <p className="text-sm leading-relaxed text-ink">{rootCauseAnalysis.topLeakagePoint}</p>
           </div>
 
           <div>
-            <p className="mb-3 eyebrow">Ranked likely causes</p>
+            <p className="mb-3 eyebrow">Ranked root causes</p>
             <ol className="flex flex-col gap-3">
               {rootCauseAnalysis.rankedCauses.map((c, i) => {
-                const det = analysis.rankedCauses[i];
+                const det = analysis?.rankedCauses[i];
                 return (
-                  <li key={c.rank} className="flex gap-3 rounded-lg border border-line bg-surface p-3 text-sm">
+                  <li
+                    key={c.rank}
+                    className="flex gap-3 rounded-lg border border-line bg-surface p-3 text-sm"
+                  >
                     <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
                       {c.rank}
                     </span>
@@ -162,69 +184,83 @@ export function AnalysisResults({ analysis, generated }: Props) {
             </ol>
           </div>
 
-          {/* Response speed comparison */}
-          <div className="rounded-lg border border-line bg-canvas p-4">
-            <p className="mb-3 eyebrow">Conversion rate by first-response speed</p>
-            <div className="flex flex-col gap-2.5">
-              <ConversionBar
-                label="First response ≤ 4h (within SLA)"
-                rate={analysis.conversionWithTimely}
-                color="bg-accent"
-                valueColor="text-accent"
-              />
-              <div className="flex items-center justify-end">
-                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600">
-                  ↓ {responseGap.toFixed(0)}pp gap
-                </span>
+          {/* Quantitative comparison bars — demo mode only */}
+          {analysis && responseGap !== null && followupGap !== null && (
+            <div className="rounded-lg border border-line bg-canvas p-4">
+              <p className="mb-3 eyebrow">Conversion rate by first-response speed</p>
+              <div className="flex flex-col gap-2.5">
+                <ConversionBar
+                  label="First response ≤ 4h (within SLA)"
+                  rate={analysis.conversionWithTimely}
+                  color="bg-accent"
+                  valueColor="text-accent"
+                />
+                <div className="flex items-center justify-end">
+                  <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600">
+                    ↓ {responseGap.toFixed(0)}pp gap
+                  </span>
+                </div>
+                <ConversionBar
+                  label="First response > 24h (delayed)"
+                  rate={analysis.conversionWithDelayed}
+                  color="bg-red-400"
+                  valueColor="text-red-600"
+                />
               </div>
-              <ConversionBar
-                label="First response > 24h (delayed)"
-                rate={analysis.conversionWithDelayed}
-                color="bg-red-400"
-                valueColor="text-red-600"
-              />
-            </div>
-            <div className="mt-4 flex flex-col gap-2.5 border-t border-line pt-4">
-              <ConversionBar
-                label="No missed follow-up"
-                rate={analysis.conversionNoMissedFollowup}
-                color="bg-accent/70"
-                valueColor="text-accent"
-              />
-              <div className="flex items-center justify-end">
-                <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-orange-600">
-                  ↓ {followupGap.toFixed(0)}pp gap
-                </span>
+              <div className="mt-4 flex flex-col gap-2.5 border-t border-line pt-4">
+                <ConversionBar
+                  label="No missed follow-up"
+                  rate={analysis.conversionNoMissedFollowup}
+                  color="bg-accent/70"
+                  valueColor="text-accent"
+                />
+                <div className="flex items-center justify-end">
+                  <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-orange-600">
+                    ↓ {followupGap.toFixed(0)}pp gap
+                  </span>
+                </div>
+                <ConversionBar
+                  label="Missed follow-up"
+                  rate={analysis.conversionMissedFollowup}
+                  color="bg-orange-400"
+                  valueColor="text-orange-600"
+                />
               </div>
-              <ConversionBar
-                label="Missed follow-up"
-                rate={analysis.conversionMissedFollowup}
-                color="bg-orange-400"
-                valueColor="text-orange-600"
-              />
+              <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+                {rootCauseAnalysis.supportingComparison}
+              </p>
             </div>
-            <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-              {rootCauseAnalysis.supportingComparison}
-            </p>
-          </div>
+          )}
+
+          {/* Text comparison — general mode */}
+          {!analysis && (
+            <div className="rounded-lg border border-line bg-canvas p-4">
+              <p className="eyebrow mb-1">Key comparison</p>
+              <p className="text-sm leading-relaxed text-ink">{rootCauseAnalysis.supportingComparison}</p>
+            </div>
+          )}
 
           <div className="rounded-lg border border-line bg-canvas p-4">
             <p className="eyebrow mb-1">Segment insight</p>
             <p className="text-sm leading-relaxed text-ink">{rootCauseAnalysis.segmentInsight}</p>
           </div>
 
-          <div>
-            <p className="mb-2 eyebrow">Conversion rate by owner</p>
-            <OwnerComparisonChart data={analysis.byOwner} baseline={analysis.conversionRate} />
-          </div>
+          {analysis && (
+            <div>
+              <p className="mb-2 eyebrow">Conversion rate by owner</p>
+              <OwnerComparisonChart data={analysis.byOwner} baseline={analysis.conversionRate} />
+            </div>
+          )}
         </div>
       </PhaseCard>
 
-      {/* 5. Recommended Fix */}
-      <PhaseCard index={5} title="Recommended Fix" eyebrow="Improve">
+      {/* Recommended Fix */}
+      <PhaseCard index={idx(5)} title="Recommended Fix" eyebrow="Improve">
         <div className="flex flex-col gap-4">
           <div className="rounded-lg border border-accent/20 bg-accent-soft p-4">
-            <p className="text-sm leading-relaxed font-medium text-ink">{recommendation.firstAction}</p>
+            <p className="text-sm font-medium leading-relaxed text-ink">
+              {recommendation.firstAction}
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
             <div>
@@ -243,8 +279,8 @@ export function AnalysisResults({ analysis, generated }: Props) {
         </div>
       </PhaseCard>
 
-      {/* 6. Workflow Rule / SOP */}
-      <PhaseCard index={6} title="Workflow Rule / SOP Update" eyebrow="Improve">
+      {/* Workflow SOP */}
+      <PhaseCard index={idx(6)} title="Workflow Rule / SOP Update" eyebrow="Improve">
         <div className="flex flex-col gap-4">
           <div>
             <p className="font-semibold text-ink">{workflowSOP.title}</p>
@@ -271,36 +307,61 @@ export function AnalysisResults({ analysis, generated }: Props) {
         </div>
       </PhaseCard>
 
-      {/* 7. Control Dashboard */}
-      <PhaseCard index={7} title="Control Dashboard" eyebrow="Control">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard
-            label="Conversion rate"
-            value={`${analysis.conversionRate}%`}
-            sub="New lead → booked meeting"
-            highlight
-          />
-          <MetricCard
-            label="Median first response"
-            value={`${analysis.medianFirstResponseHours.toFixed(1)}h`}
-            sub="SLA target: 4h"
-            alert={analysis.medianFirstResponseHours > 4}
-          />
-          <MetricCard
-            label="Stalled lead rate"
-            value={`${analysis.stalledLeadRate}%`}
-            sub="Alert threshold: 15%"
-            alert={analysis.stalledLeadRate > 15}
-          />
-          <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
-            <span className="eyebrow text-orange-600">Needs attention</span>
-            <span className="mt-1 text-sm font-medium leading-snug text-ink">{controlDashboard.segmentNeedingAttention}</span>
+      {/* Control Dashboard */}
+      <PhaseCard index={idx(7)} title="Control Dashboard" eyebrow="Control">
+        {analysis ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricCard
+              label="Conversion rate"
+              value={`${analysis.conversionRate}%`}
+              sub="New lead → booked meeting"
+              highlight
+            />
+            <MetricCard
+              label="Median first response"
+              value={`${analysis.medianFirstResponseHours.toFixed(1)}h`}
+              sub="SLA target: 4h"
+              alert={analysis.medianFirstResponseHours > 4}
+            />
+            <MetricCard
+              label="Stalled lead rate"
+              value={`${analysis.stalledLeadRate}%`}
+              sub="Alert threshold: 15%"
+              alert={analysis.stalledLeadRate > 15}
+            />
+            <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
+              <span className="eyebrow text-orange-600">Needs attention</span>
+              <span className="mt-1 text-sm font-medium leading-snug text-ink">
+                {controlDashboard.segmentNeedingAttention}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {[
+              controlDashboard.primaryMetricLabel,
+              controlDashboard.secondaryMetricLabel,
+              controlDashboard.tertiaryMetricLabel,
+            ].map((label, i) => (
+              <div
+                key={i}
+                className="flex flex-col gap-1 rounded-xl border border-line bg-canvas px-4 py-4"
+              >
+                <span className="text-[13px] font-medium leading-snug text-ink">{label}</span>
+              </div>
+            ))}
+            <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
+              <span className="eyebrow text-orange-600">Needs attention</span>
+              <span className="mt-1 text-sm font-medium leading-snug text-ink">
+                {controlDashboard.segmentNeedingAttention}
+              </span>
+            </div>
+          </div>
+        )}
       </PhaseCard>
 
-      {/* 8. Alert Logic */}
-      <PhaseCard index={8} title="Alert Logic" eyebrow="Control">
+      {/* Alert Logic */}
+      <PhaseCard index={idx(8)} title="Alert Logic" eyebrow="Control">
         <ul className="flex flex-col gap-3">
           {alertRules.map((rule, i) => (
             <li
@@ -319,8 +380,8 @@ export function AnalysisResults({ analysis, generated }: Props) {
         </ul>
       </PhaseCard>
 
-      {/* 9. Monitoring Report */}
-      <PhaseCard index={9} title="Monitoring Report" eyebrow="Control">
+      {/* Monitoring Report */}
+      <PhaseCard index={idx(9)} title="Monitoring Report" eyebrow="Control">
         <dl className="flex flex-col gap-4 text-sm">
           {[
             ["Issue identified", monitoringReport.issue],

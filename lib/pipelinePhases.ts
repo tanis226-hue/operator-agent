@@ -33,7 +33,7 @@ export type PipelineEvent =
   | { event: "phase"; phase: string; status: "done"; summary: string }
   | {
       event: "complete";
-      analysis: PipelineAnalysis;
+      analysis?: PipelineAnalysis;
       generated: GeneratedOutputPayload;
       pipelineLog: PipelineLog;
       usedFallback: false;
@@ -282,9 +282,9 @@ Output a JSON object matching this EXACT schema:
     "responsePlan": "2-3 sentences on what happens if metrics drift back."
   },
   "controlDashboard": {
-    "conversionRateLabel": "Conversion Rate: ${analysis.conversionRate}%",
-    "medianResponseLabel": "Median First Response: ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h)",
-    "stalledRateLabel": "Stalled Lead Rate: ${analysis.stalledLeadRate}%",
+    "primaryMetricLabel": "Conversion Rate: ${analysis.conversionRate}%",
+    "secondaryMetricLabel": "Median First Response: ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h)",
+    "tertiaryMetricLabel": "Stalled Lead Rate: ${analysis.stalledLeadRate}%",
     "segmentNeedingAttention": "The one owner or source segment most in need of attention right now."
   },
   "alertRules": [

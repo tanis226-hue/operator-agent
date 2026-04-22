@@ -1,7 +1,7 @@
 export const WORKFLOW_LABEL = "Lead Intake and Conversion Bottleneck" as const;
 
 export const PRODUCT_SUBTITLE =
-  "Diagnose where leads are leaking, fix the biggest operational breakdown, and put controls in place.";
+  "Find what's broken in any business workflow, diagnose the root cause, and build controls that keep it fixed.";
 
 export const PRIMARY_METRIC_NAME =
   "Conversion rate from new lead to booked meeting" as const;

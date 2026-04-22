@@ -46,9 +46,9 @@ export type MonitoringReport = {
 };
 
 export type ControlDashboard = {
-  conversionRateLabel: string;
-  medianResponseLabel: string;
-  stalledRateLabel: string;
+  primaryMetricLabel: string;
+  secondaryMetricLabel: string;
+  tertiaryMetricLabel: string;
   segmentNeedingAttention: string;
 };
 

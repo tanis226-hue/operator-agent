@@ -12,9 +12,9 @@ export default function HomePage() {
       </main>
 
       <footer className="mx-auto max-w-5xl px-6 pb-10 pt-2 text-xs text-ink-muted">
-        Local synthetic data · No production integrations ·{" "}
+        Demo dataset: synthetic lead intake pipeline · Custom cases run purely from your intake brief ·{" "}
         <strong className="font-medium text-ink-soft">
-          Lead Intake and Conversion Bottleneck
+          Powered by Claude Opus 4.7
         </strong>
       </footer>
     </div>
