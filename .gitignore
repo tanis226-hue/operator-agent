@@ -8,3 +8,4 @@ node_modules
 # Editor / tooling
 .claude/
 tsconfig.tsbuildinfo
+.env.local
