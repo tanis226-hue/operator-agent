@@ -50,7 +50,7 @@ export type PipelineLog = Array<{
 
 const MODEL = "claude-opus-4-7";
 const SYSTEM_PROMPT =
-  "You are a senior operations consultant. Output ONLY valid JSON — no markdown, no prose, no explanation.";
+  "You are a RevOps and B2B sales operations specialist with deep experience diagnosing lead pipeline failures at mid-market SaaS companies. Industry context you carry: the average B2B company takes 47+ hours to respond to an inbound lead (Drift benchmark); leads contacted within 5 minutes are 21x more likely to qualify (InsideSales/HBR); after 24 hours without contact, qualification rates drop roughly 75%. Common structural failure modes you have seen repeatedly: SDR capacity overload, uneven round-robin routing, after-hours lead decay windows, purely discretionary follow-up without CRM enforcement, and lead scoring drift that trains reps to deprioritize inbound. Output ONLY valid JSON — no markdown, no prose, no explanation.";
 
 function extractJSON(raw: string): string {
   let s = raw
@@ -65,10 +65,14 @@ function extractJSON(raw: string): string {
   return s;
 }
 
-async function callClaude(client: Anthropic, prompt: string): Promise<string> {
+async function callClaude(
+  client: Anthropic,
+  prompt: string,
+  maxTokens = 4096
+): Promise<string> {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   });
@@ -128,7 +132,7 @@ ${ownerLines}
 SOURCE BREAKDOWN
 ${sourceLines}
 
-TASK: Digest this business context cold. Establish what is broken vs what was intended. Confirm or deny the owner's hypotheses. Surface anything unexpected.
+TASK: Come in cold as a RevOps diagnostician. First, benchmark this pipeline against industry standards: B2B median response is 47h, top performers respond in <5 minutes (21x qualification lift), leads with no contact after 24h have ~75% lower qualification rates — compare those benchmarks against the metrics above and name where this pipeline sits on that spectrum. Second, assess whether this is an SDR capacity problem (too many leads per rep forces implicit triage) or a process enforcement problem (follow-up is purely discretionary). Third, confirm or deny the owner's hypotheses with the data. Surface anything the owner cannot see from inside the process.
 
 Output a JSON object matching this exact schema:
 {
@@ -170,7 +174,7 @@ CONTEXT
 - Biggest frustration: ${brief.biggestFrustration}
 - Suspected problem stage: ${brief.suspectedStage}
 
-TASK: Go beyond WHAT to WHY. Explain the causal mechanisms behind each cause. Describe interaction effects between causes. Tell the story of how a lead actually gets lost in this pipeline.
+TASK: Reason like a RevOps consultant who has diagnosed this failure pattern at dozens of companies. Go beyond WHAT is broken to explain the behavioral and structural mechanisms driving it. The four most common causal chains in B2B lead pipelines are: (1) after-hours decay — leads arriving outside business hours sit in queue overnight, losing 60%+ of qualification probability by morning; (2) SDR capacity overload — too many leads per rep forces implicit triage, inbound leads lose to active pipeline urgency; (3) routing asymmetry — uneven round-robin loading means some reps are perpetually buried while others have slack; (4) no CRM enforcement — without timer fields or auto-escalation rules, follow-up is purely discretionary and deprioritized under any pressure. Identify which mechanisms are active in this pipeline and explain precisely how they interact and amplify each other.
 
 Output a JSON object matching this exact schema:
 {
@@ -219,14 +223,14 @@ BRIEF GOALS
 - SLA: ${brief.slaConstraint}
 - Biggest frustration: ${brief.biggestFrustration}
 
-TASK: Generate the full user-facing report. Every section must be grounded in the mechanisms discovered in phases 1 and 2. Reference specific findings, not generic advice. Speak directly to this owner's situation.
+TASK: Generate the full user-facing report as a RevOps expert who has diagnosed this exact failure mechanism. Every section must be grounded in the specific mechanisms from phases 1 and 2. Reference the industry benchmarks where they contextualize findings (47h industry median, 5-min 21x lift, 24h 75% qualification decay). Recommendations must name specific system-level controls — CRM automation rules, timer fields, auto-escalation triggers, coverage protocols — not generic guidance. Speak to this owner as someone who has fixed this exact problem before.
 
 RULES:
-- Use exact metric numbers from KEY METRICS above.
-- SOP bullets must be exactly 5 strings.
-- alertRules must be exactly 5 objects, each with severity "warning" or "critical" only.
+- Use exact metric numbers from KEY METRICS above. Reference the industry benchmarks you carry (47h median, 5-min 21x lift, 24h 75% decay) to contextualize findings.
+- SOP bullets must be exactly 5 strings. Each must describe a specific operational control — CRM automation triggers, SLA timer fields, assignment rules, escalation conditions, or after-hours coverage protocols. No generic guidance.
+- alertRules must be exactly 5 objects, each with severity "warning" or "critical" only. Each must be a specific RevOps monitoring rule referencing lead aging thresholds, SLA violations, stall rate spikes, or routing queue imbalance — specific enough to configure in a CRM or ops dashboard.
 - Do not use "AI", "DMAIC", "agentic", or academic jargon.
-- workflowSOP.bullets: array of exactly 5 actionable rule strings.
+- Recommendations must name specific system-level changes where relevant (CRM task automation, lead aging reports, auto-reassignment after inactivity threshold, round-robin rebalancing).
 
 Output a JSON object matching this EXACT schema:
 {
@@ -316,7 +320,7 @@ export async function runPipeline(
     event: "phase",
     phase: "frame",
     status: "running",
-    label: "Framing the problem and reviewing pipeline data",
+    label: "Benchmarking pipeline against industry standards",
   });
 
   const phase1Prompt = buildPhase1Prompt(brief, analysis, processNote);
@@ -332,7 +336,7 @@ export async function runPipeline(
 
   pipelineLog.push({
     phase: "frame",
-    label: "Framing the problem and reviewing pipeline data",
+    label: "Benchmarking pipeline against industry standards",
     summary: frame.bottomLine,
   });
 
@@ -341,7 +345,7 @@ export async function runPipeline(
     event: "phase",
     phase: "analyze",
     status: "running",
-    label: "Analyzing root causes and causal chains",
+    label: "Diagnosing failure mechanisms and behavioral patterns",
   });
 
   const phase2Prompt = buildPhase2Prompt(frame, analysis, brief);
@@ -357,7 +361,7 @@ export async function runPipeline(
 
   pipelineLog.push({
     phase: "analyze",
-    label: "Analyzing root causes and causal chains",
+    label: "Diagnosing failure mechanisms and behavioral patterns",
     summary: analyze.criticalInsight,
   });
 
@@ -366,11 +370,11 @@ export async function runPipeline(
     event: "phase",
     phase: "synthesize",
     status: "running",
-    label: "Building recommendations and control plan",
+    label: "Building controls, playbook, and monitoring rules",
   });
 
   const phase3Prompt = buildPhase3Prompt(brief, analysis, frame, analyze);
-  const phase3Raw = await callClaude(client, phase3Prompt);
+  const phase3Raw = await callClaude(client, phase3Prompt, 8192);
   const generated = JSON.parse(extractJSON(phase3Raw)) as GeneratedOutputPayload;
 
   onEvent({
@@ -382,7 +386,7 @@ export async function runPipeline(
 
   pipelineLog.push({
     phase: "synthesize",
-    label: "Building recommendations and control plan",
+    label: "Building controls, playbook, and monitoring rules",
     summary: "Report generated",
   });
 
