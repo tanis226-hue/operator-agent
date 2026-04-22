@@ -1,55 +1,61 @@
-import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import { loadDataset, loadProcessNote } from "@/lib/loadDataset";
 import { analyzePipeline } from "@/lib/analyzePipeline";
-import { buildOutputPayload } from "@/lib/buildOutputPayload";
 import { DEMO_INTAKE_BRIEF } from "@/lib/intakeBrief";
-import type { GeneratedOutputPayload } from "@/lib/outputTypes";
+import { runPipeline } from "@/lib/pipelinePhases";
+import type { PipelineEvent } from "@/lib/pipelinePhases";
 
 export const maxDuration = 120;
-
-function loadDemoOutput(): GeneratedOutputPayload {
-  const filePath = path.join(process.cwd(), "data", "demo_output.json");
-  return JSON.parse(fs.readFileSync(filePath, "utf-8")) as GeneratedOutputPayload;
-}
 
 function hasApiKey(): boolean {
   const k = process.env.ANTHROPIC_API_KEY ?? "";
   return k.trim().length > 0 && k !== "your_key_here";
 }
 
-export async function POST() {
-  try {
-    const { records, warnings } = loadDataset();
-    const analysis = analyzePipeline(records);
+export async function POST(): Promise<Response> {
+  const encoder = new TextEncoder();
 
-    let generated: GeneratedOutputPayload;
-    let usedFallback = false;
-
-    if (hasApiKey()) {
-      try {
-        const processNote = loadProcessNote();
-        generated = await buildOutputPayload(DEMO_INTAKE_BRIEF, analysis, processNote);
-      } catch {
-        // Live call failed — use pre-generated output rather than showing an error
-        generated = loadDemoOutput();
-        usedFallback = true;
+  const stream = new ReadableStream({
+    async start(controller) {
+      function emit(event: PipelineEvent): void {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+        );
       }
-    } else {
-      generated = loadDemoOutput();
-      usedFallback = true;
-    }
 
-    return NextResponse.json({
-      ok: true,
-      analysis,
-      generated,
-      dataWarnings: warnings,
-      usedFallback,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
-  }
+      try {
+        if (!hasApiKey()) {
+          emit({
+            event: "error",
+            message:
+              "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
+          });
+          controller.close();
+          return;
+        }
+
+        const { records } = loadDataset();
+        const analysis = analyzePipeline(records);
+        const processNote = loadProcessNote();
+
+        await runPipeline(
+          DEMO_INTAKE_BRIEF,
+          analysis,
+          processNote,
+          emit
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        emit({ event: "error", message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+    },
+  });
 }

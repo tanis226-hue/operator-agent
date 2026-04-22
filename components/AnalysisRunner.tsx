@@ -6,31 +6,48 @@ import { AnalysisResults } from "./AnalysisResults";
 import { PlaceholderResults } from "./PlaceholderResults";
 import type { PipelineAnalysis } from "@/lib/analyzePipeline";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
+import type { PipelineLog } from "@/lib/pipelinePhases";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 
 type RunState = "idle" | "running" | "done" | "error";
 
-type AnalysisResponse = {
-  ok: boolean;
-  analysis: PipelineAnalysis;
-  generated: GeneratedOutputPayload;
-  usedFallback?: boolean;
-  error?: string;
+type PhaseState = {
+  phase: string;
+  label: string;
+  status: "pending" | "running" | "done";
+  summary?: string;
 };
 
-const PHASE_STEPS: string[] = [
-  "Reviewing workflow context",
-  "Measuring baseline",
-  "Identifying leakage points",
-  "Generating improvement plan",
-  "Building control package",
+type AnalysisResponse = {
+  analysis: PipelineAnalysis;
+  generated: GeneratedOutputPayload;
+  pipelineLog: PipelineLog;
+  usedFallback?: boolean;
+};
+
+const PIPELINE_PHASES: PhaseState[] = [
+  {
+    phase: "frame",
+    label: "Framing the problem and reviewing pipeline data",
+    status: "pending",
+  },
+  {
+    phase: "analyze",
+    label: "Analyzing root causes and causal chains",
+    status: "pending",
+  },
+  {
+    phase: "synthesize",
+    label: "Building recommendations and control plan",
+    status: "pending",
+  },
 ];
 
 type Props = { brief: IntakeBrief };
 
 export function AnalysisRunner({ brief }: Props) {
   const [state, setState] = useState<RunState>("idle");
-  const [stepIndex, setStepIndex] = useState(0);
+  const [phases, setPhases] = useState<PhaseState[]>(PIPELINE_PHASES);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [completedAt, setCompletedAt] = useState("");
@@ -39,35 +56,78 @@ export function AnalysisRunner({ brief }: Props) {
   async function handleRunAnalysis() {
     if (state === "running") return;
     setState("running");
-    setStepIndex(0);
+    setPhases(PIPELINE_PHASES.map((p) => ({ ...p, status: "pending" })));
     setResult(null);
     setErrorMsg("");
     setBriefOpen(false);
 
-    // Cycle through steps until the API responds
-    let i = 0;
-    const stepInterval = setInterval(() => {
-      i = (i + 1) % PHASE_STEPS.length;
-      setStepIndex(i);
-    }, 1600);
-
     try {
       const res = await fetch("/api/run-analysis", { method: "POST" });
-      const data: AnalysisResponse = await res.json();
-      clearInterval(stepInterval);
 
-      if (!data.ok) {
-        setErrorMsg(data.error ?? "Unknown error");
-        setState("error");
-        setBriefOpen(true);
-        return;
+      if (!res.body) {
+        throw new Error("No response body");
       }
 
-      setCompletedAt(new Date().toLocaleTimeString());
-      setResult(data);
-      setState("done");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          let parsed: Record<string, unknown>;
+          try {
+            parsed = JSON.parse(jsonStr) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+
+          const eventType = parsed.event as string;
+
+          if (eventType === "phase") {
+            const phase = parsed.phase as string;
+            const status = parsed.status as "running" | "done";
+            const label = parsed.label as string | undefined;
+            const summary = parsed.summary as string | undefined;
+
+            setPhases((prev) =>
+              prev.map((p) => {
+                if (p.phase !== phase) return p;
+                if (status === "running") {
+                  return { ...p, status: "running", label: label ?? p.label };
+                }
+                return { ...p, status: "done", summary: summary ?? "" };
+              })
+            );
+          } else if (eventType === "complete") {
+            const analysis = parsed.analysis as PipelineAnalysis;
+            const generated = parsed.generated as GeneratedOutputPayload;
+            const pipelineLog = parsed.pipelineLog as PipelineLog;
+            const usedFallback = parsed.usedFallback as boolean | undefined;
+
+            setResult({ analysis, generated, pipelineLog, usedFallback });
+            setCompletedAt(new Date().toLocaleTimeString());
+            setState("done");
+          } else if (eventType === "error") {
+            const message = parsed.message as string;
+            setErrorMsg(message);
+            setState("error");
+            setBriefOpen(true);
+          }
+        }
+      }
     } catch (err) {
-      clearInterval(stepInterval);
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setState("error");
       setBriefOpen(true);
@@ -104,10 +164,7 @@ export function AnalysisRunner({ brief }: Props) {
       >
         <div className="flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <h2
-              id="run-heading"
-              className="text-base font-semibold text-ink"
-            >
+            <h2 id="run-heading" className="text-base font-semibold text-ink">
               Run analysis
             </h2>
             <p className="mt-1 text-sm text-ink-soft">
@@ -116,20 +173,14 @@ export function AnalysisRunner({ brief }: Props) {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {isRunning && (
-              <span
-                aria-live="polite"
-                className="flex items-center gap-1.5 text-xs font-medium text-ink-muted"
-              >
-                <span className="inline-flex gap-0.5" aria-hidden>
-                  <Dot /><Dot delay="200ms" /><Dot delay="400ms" />
-                </span>
-                {PHASE_STEPS[stepIndex]}
-              </span>
-            )}
-            {isDone && (
+            {isDone && completedAt && (
               <span className="text-xs text-ink-muted">
                 Complete · {completedAt}
+                {result?.usedFallback === true && (
+                  <span className="ml-1.5 rounded border border-line px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                    pre-generated
+                  </span>
+                )}
               </span>
             )}
             {state === "error" && (
@@ -143,49 +194,18 @@ export function AnalysisRunner({ brief }: Props) {
               disabled={isRunning}
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-semibold text-white shadow-btn transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isRunning
-                ? "Running…"
-                : isDone
-                ? "Re-run"
-                : "Run Analysis"}
+              {isRunning ? "Running…" : isDone ? "Re-run" : "Run Analysis"}
             </button>
           </div>
         </div>
 
-        {/* Loading step track */}
-        {isRunning && (
-          <div className="border-t border-line px-6 py-3">
-            <ol className="flex flex-wrap gap-x-6 gap-y-1.5">
-              {PHASE_STEPS.map((step, i) => {
-                const done = i < stepIndex;
-                const active = i === stepIndex;
-                return (
-                  <li
-                    key={step}
-                    className={[
-                      "flex items-center gap-1.5 text-[11px] font-medium",
-                      done
-                        ? "text-accent"
-                        : active
-                        ? "text-ink"
-                        : "text-ink-muted/50",
-                    ].join(" ")}
-                  >
-                    <span
-                      aria-hidden
-                      className={[
-                        "inline-block h-1.5 w-1.5 rounded-full",
-                        done
-                          ? "bg-accent"
-                          : active
-                          ? "bg-ink animate-pulse"
-                          : "bg-ink-muted/30",
-                      ].join(" ")}
-                    />
-                    {step}
-                  </li>
-                );
-              })}
+        {/* Phase progress track — shown while running */}
+        {(isRunning || isDone) && (
+          <div className="border-t border-line px-6 py-4">
+            <ol className="flex flex-col gap-3">
+              {phases.map((p) => (
+                <PhaseRow key={p.phase} phase={p} />
+              ))}
             </ol>
           </div>
         )}
@@ -206,11 +226,6 @@ export function AnalysisRunner({ brief }: Props) {
         {isDone && completedAt && (
           <span className="text-[11px] text-ink-muted">
             Generated {completedAt}
-            {result?.usedFallback && (
-              <span className="ml-1.5 rounded border border-line px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
-                pre-generated
-              </span>
-            )}
           </span>
         )}
       </div>
@@ -224,6 +239,62 @@ export function AnalysisRunner({ brief }: Props) {
         <PlaceholderResults />
       )}
     </>
+  );
+}
+
+function PhaseRow({ phase }: { phase: PhaseState }) {
+  const { status, label, summary } = phase;
+
+  return (
+    <li className="flex items-start gap-3">
+      {/* Status indicator */}
+      <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+        {status === "pending" && (
+          <span
+            aria-hidden
+            className="block h-3 w-3 rounded-full border border-ink-muted/30"
+          />
+        )}
+        {status === "running" && (
+          <span
+            aria-hidden
+            className="block h-3 w-3 animate-pulse rounded-full bg-accent"
+          />
+        )}
+        {status === "done" && (
+          <span
+            aria-hidden
+            className="block h-3 w-3 rounded-full bg-accent"
+          />
+        )}
+      </div>
+
+      {/* Label and summary */}
+      <div className="min-w-0 flex-1">
+        <p
+          className={[
+            "text-[13px] font-medium leading-snug",
+            status === "pending" ? "text-ink-muted/50" : "text-ink",
+          ].join(" ")}
+        >
+          {label}
+        </p>
+        {status === "done" && summary && (
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-ink-soft">
+            {summary}
+          </p>
+        )}
+        {status === "running" && (
+          <p className="mt-0.5 text-[11px] text-ink-muted">
+            <span className="inline-flex gap-0.5" aria-hidden>
+              <Dot />
+              <Dot delay="200ms" />
+              <Dot delay="400ms" />
+            </span>
+          </p>
+        )}
+      </div>
+    </li>
   );
 }
 
