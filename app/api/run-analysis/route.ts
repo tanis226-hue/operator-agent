@@ -7,7 +7,7 @@ import { buildOutputPayload } from "@/lib/buildOutputPayload";
 import { DEMO_INTAKE_BRIEF } from "@/lib/intakeBrief";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function loadDemoOutput(): GeneratedOutputPayload {
   const filePath = path.join(process.cwd(), "data", "demo_output.json");

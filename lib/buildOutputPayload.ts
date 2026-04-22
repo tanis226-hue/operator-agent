@@ -4,7 +4,7 @@ import type { IntakeBrief } from "./intakeBrief";
 import { buildMasterPrompt } from "./prompts";
 import type { GeneratedOutputPayload } from "./outputTypes";
 
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "claude-opus-4-7";
 
 function extractJSON(raw: string): string {
   // Strip markdown fences
@@ -34,7 +34,7 @@ export async function buildOutputPayload(
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 8096,
     system:
       "You are a senior operations advisor. You output ONLY valid JSON objects — no prose, no markdown, no explanation. Your entire response must be parseable by JSON.parse().",
     messages: [
