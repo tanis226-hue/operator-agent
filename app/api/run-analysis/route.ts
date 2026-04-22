@@ -13,46 +13,38 @@ function hasApiKey(): boolean {
 
 export async function POST(): Promise<Response> {
   const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      function emit(event: PipelineEvent): void {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
-        );
+  function emit(event: PipelineEvent): void {
+    void writer.write(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+  }
+
+  void (async () => {
+    try {
+      if (!hasApiKey()) {
+        emit({
+          event: "error",
+          message:
+            "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
+        });
+        return;
       }
 
-      try {
-        if (!hasApiKey()) {
-          emit({
-            event: "error",
-            message:
-              "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
-          });
-          controller.close();
-          return;
-        }
+      const { records } = loadDataset();
+      const analysis = analyzePipeline(records);
+      const processNote = loadProcessNote();
 
-        const { records } = loadDataset();
-        const analysis = analyzePipeline(records);
-        const processNote = loadProcessNote();
+      await runPipeline(DEMO_INTAKE_BRIEF, analysis, processNote, emit);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      emit({ event: "error", message });
+    } finally {
+      await writer.close();
+    }
+  })();
 
-        await runPipeline(
-          DEMO_INTAKE_BRIEF,
-          analysis,
-          processNote,
-          emit
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        emit({ event: "error", message });
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
+  return new Response(readable, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
