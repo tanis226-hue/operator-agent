@@ -41,22 +41,28 @@ const EMPTY_BRIEF: IntakeBrief = {
   qualifiedLeadDefinition: "", suspectedStage: "", biggestFrustration: "",
 };
 
-type Props = { brief: IntakeBrief };
+type Props = {
+  brief: IntakeBrief;
+  externalBrief?: IntakeBrief;
+  externalNote?: string;
+  onRestart?: () => void;
+};
 
-export function AnalysisRunner({ brief }: Props) {
+export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }: Props) {
   const [state, setState]           = useState<RunState>("idle");
   const [phases, setPhases]         = useState<PhaseState[]>(PIPELINE_PHASES);
   const [result, setResult]         = useState<AnalysisResponse | null>(null);
   const [errorMsg, setErrorMsg]     = useState("");
   const [completedAt, setCompletedAt] = useState("");
-  const [briefOpen, setBriefOpen]   = useState(true);
+  const [briefOpen, setBriefOpen]   = useState(false);
   const [runStartMs, setRunStartMs] = useState<number | null>(null);
   const [totalDurationMs, setTotalDurationMs] = useState<number | null>(null);
   const [copied, setCopied]         = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
-  const [mode, setMode]             = useState<CaseMode>("demo");
-  const [customBrief, setCustomBrief] = useState<IntakeBrief>(EMPTY_BRIEF);
-  const [customNote, setCustomNote] = useState("");
+  const [mode, setMode]             = useState<CaseMode>(externalBrief ? "custom" : "demo");
+  const [customBrief, setCustomBrief] = useState<IntakeBrief>(externalBrief ?? EMPTY_BRIEF);
+  const [customNote, setCustomNote] = useState(externalNote ?? "");
 
   const isRunning  = state === "running";
   const isDone     = state === "done";
@@ -172,6 +178,20 @@ export function AnalysisRunner({ brief }: Props) {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function handleDownloadReport() {
+    if (!result) return;
+    const md = buildMarkdownReport(activeBrief, result.generated, result.analysis);
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analysis-${activeBrief.workflowName.toLowerCase().replace(/\s+/g, "-")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setDownloaded(true);
+    setTimeout(() => setDownloaded(false), 2000);
+  }
+
   function handleModeChange(next: CaseMode) {
     if (isRunning) return;
     setMode(next);
@@ -248,14 +268,32 @@ export function AnalysisRunner({ brief }: Props) {
                 {errorMsg && errorMsg.length < 80 ? errorMsg : "Failed — see details below"}
               </span>
             )}
-            {isDone && (
+            {onRestart && !isRunning && (
               <button
                 type="button"
-                onClick={handleCopyReport}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
+                onClick={onRestart}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink-muted transition hover:text-ink"
               >
-                {copied ? "Copied!" : "Copy report"}
+                ← Edit
               </button>
+            )}
+            {isDone && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyReport}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
+                >
+                  {copied ? "Copied!" : "Copy report"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadReport}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
+                >
+                  {downloaded ? "Saved!" : "Save .md"}
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -305,7 +343,21 @@ export function AnalysisRunner({ brief }: Props) {
       </div>
 
       {isDone && result ? (
-        <AnalysisResults analysis={result.analysis} generated={result.generated} />
+        <>
+          <AnalysisResults analysis={result.analysis} generated={result.generated} />
+          {onRestart && (
+            <div className="flex items-center justify-center gap-4 rounded-card border border-line bg-surface px-6 py-5 shadow-card">
+              <p className="text-[13px] text-ink-soft">Want to analyze a different workflow?</p>
+              <button
+                type="button"
+                onClick={onRestart}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-semibold text-white shadow-btn transition hover:bg-accent-hover"
+              >
+                Start new analysis →
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <PlaceholderResults />
       )}
