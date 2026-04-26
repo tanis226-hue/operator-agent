@@ -87,6 +87,37 @@ It is a focused end-to-end demo of operational reasoning, intervention design, a
 5. Run analysis
 6. Inspect the generated outputs
 
+## Environment Variables
+
+Create `.env.local` (not committed). Only `ANTHROPIC_API_KEY` is required to run the analysis.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | yes | Claude API key used by `app/api/run-analysis`. |
+| `NEXT_PUBLIC_SITE_URL` | no | Public origin used for absolute asset URLs in emails (e.g. `https://your-deploy.example.com`). |
+| `RESEND_API_KEY` | no | Enables the email-report feature. Without it, the email endpoint returns 500. |
+| `RESEND_FROM_EMAIL` | no | `From` address for outbound mail. Defaults to Resend's sandbox sender. |
+| `RESEND_AUDIENCE_ID` | no | If set, recipients are added to this Resend audience. |
+| `OWNER_EMAIL` | no | If set, owner is BCC'd a notification when a report is requested, and recipients can reply directly to this address. |
+
+### Sender signature (email body)
+
+The personalized "A note from …" block at the bottom of the report email is **opt-in** and only renders when `SENDER_NAME` and `SENDER_EMAIL` are both provided. Forks that do not set these variables will send a clean report with no personal signature attached.
+
+| Variable | Purpose |
+| --- | --- |
+| `SENDER_NAME` | Full name shown in the signature. |
+| `SENDER_EMAIL` | Contact email shown in the signature. |
+| `SENDER_CREDENTIALS` | Credentials line (e.g. `CSCP · LSSBB`). |
+| `SENDER_TITLE` | Role / company line. |
+| `SENDER_TAGLINE` | Smaller descriptor line below the title. |
+| `SENDER_WEBSITE` | Website URL. |
+| `SENDER_WEBSITE_LABEL` | Optional display label for the website link. |
+| `SENDER_LINKEDIN` | LinkedIn profile URL. |
+| `SENDER_PHOTO_FILE` | Filename inside `/public` (combined with `NEXT_PUBLIC_SITE_URL`) for the headshot. |
+| `SENDER_NOTE_INTRO` | Heading for the note block. Defaults to `A note from <first name>`. |
+| `SENDER_NOTE_BODY` | Body paragraph of the personal note. |
+
 ## Demo Story
 
 The demo should prove one thing clearly:

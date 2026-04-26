@@ -13,12 +13,52 @@ function e(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+type SenderProfile = {
+  name: string;
+  credentials: string;
+  title: string;
+  tagline: string;
+  email: string;
+  website: string;
+  websiteLabel: string;
+  linkedin: string;
+  photoFile: string;
+  noteIntro: string;
+  noteBody: string;
+};
+
+function loadSenderProfile(): SenderProfile | null {
+  const name = (process.env.SENDER_NAME ?? "").trim();
+  const email = (process.env.SENDER_EMAIL ?? "").trim();
+  // Both name and email are required to render the signature block.
+  // If either is missing, the signature is omitted entirely.
+  if (!name || !email) return null;
+  return {
+    name,
+    credentials: (process.env.SENDER_CREDENTIALS ?? "").trim(),
+    title: (process.env.SENDER_TITLE ?? "").trim(),
+    tagline: (process.env.SENDER_TAGLINE ?? "").trim(),
+    email,
+    website: (process.env.SENDER_WEBSITE ?? "").trim(),
+    websiteLabel: (process.env.SENDER_WEBSITE_LABEL ?? "").trim(),
+    linkedin: (process.env.SENDER_LINKEDIN ?? "").trim(),
+    photoFile: (process.env.SENDER_PHOTO_FILE ?? "").trim(),
+    noteIntro: (process.env.SENDER_NOTE_INTRO ?? `A note from ${name.split(" ")[0]}`).trim(),
+    noteBody: (process.env.SENDER_NOTE_BODY ?? "").trim(),
+  };
+}
+
 function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
   const date = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
+  const sender = loadSenderProfile();
+  const photoUrl = sender && sender.photoFile && siteUrl
+    ? `${siteUrl}/${sender.photoFile.replace(/^\//, "")}`
+    : "";
 
   const sectionHead = (letter: string, title: string) =>
     `<tr><td style="padding:32px 0 8px">
@@ -211,29 +251,30 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
           </table>
         </td></tr>
 
-        <!-- Personal note from David -->
-        <tr><td style="padding:36px 40px 8px">
-          <p style="margin:0 0 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#C45C2E">A note from David</p>
-          <p style="margin:0 0 22px;font-size:14px;color:#333;line-height:1.65">
-            I built Operator Agent because most operations problems aren't mysterious; they're under-measured. If anything in this report sparks a real question about your workflow, reply to this email or reach me directly.
-          </p>
+        <!-- Personal note from sender (only rendered when SENDER_NAME and SENDER_EMAIL are set) -->
+        ${sender ? `<tr><td style="padding:36px 40px 8px">
+          <p style="margin:0 0 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#C45C2E">${e(sender.noteIntro)}</p>
+          ${sender.noteBody ? `<p style="margin:0 0 22px;font-size:14px;color:#333;line-height:1.65">${e(sender.noteBody)}</p>` : ""}
           <table cellpadding="0" cellspacing="0" style="border-collapse:collapse">
             <tr>
+              ${photoUrl ? `<td style="vertical-align:top;padding-right:20px;width:84px">
+                <img src="${e(photoUrl)}" alt="${e(sender.name)}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:2px solid #f0d5c8;object-fit:cover" />
+              </td>` : ""}
               <td style="vertical-align:top">
-                <p style="margin:0;font-size:15px;font-weight:700;color:#1a1a1a;font-style:italic;font-family:Georgia,'Times New Roman',serif">David Tanis<span style="font-style:normal;font-weight:400;font-size:11px;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:.04em">&nbsp;&nbsp;CSCP &middot; LSSBB</span></p>
-                <p style="margin:3px 0 2px;font-size:12px;color:#666;letter-spacing:.01em">Co-Founder, ZLDA Group</p>
-                <p style="margin:0 0 12px;font-size:11px;color:#999;letter-spacing:.01em">AI-Enabled Enterprise Architect &middot; Process Improvement &middot; Digital Transformation</p>
+                <p style="margin:0;font-size:15px;font-weight:700;color:#1a1a1a;font-style:italic;font-family:Georgia,'Times New Roman',serif">${e(sender.name)}${sender.credentials ? `<span style="font-style:normal;font-weight:400;font-size:11px;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:.04em">&nbsp;&nbsp;${e(sender.credentials)}</span>` : ""}</p>
+                ${sender.title ? `<p style="margin:3px 0 2px;font-size:12px;color:#666;letter-spacing:.01em">${e(sender.title)}</p>` : ""}
+                ${sender.tagline ? `<p style="margin:0 0 12px;font-size:11px;color:#999;letter-spacing:.01em">${e(sender.tagline)}</p>` : ""}
                 <p style="margin:0;font-size:12px;color:#666;line-height:1.6">
-                  <a href="mailto:tanis@zldagroup.com" style="color:#C45C2E;text-decoration:none">tanis@zldagroup.com</a>
-                  <span style="color:#ccc;padding:0 6px">&middot;</span>
-                  <a href="https://www.zldagroup.com" style="color:#C45C2E;text-decoration:none">zldagroup.com</a>
-                  <span style="color:#ccc;padding:0 6px">&middot;</span>
-                  <a href="https://www.linkedin.com/in/dtanis/" style="color:#C45C2E;text-decoration:none">LinkedIn</a>
+                  <a href="mailto:${e(sender.email)}" style="color:#C45C2E;text-decoration:none">${e(sender.email)}</a>
+                  ${sender.website ? `<span style="color:#ccc;padding:0 6px">&middot;</span>
+                  <a href="${e(sender.website)}" style="color:#C45C2E;text-decoration:none">${e(sender.websiteLabel || sender.website.replace(/^https?:\/\//, ""))}</a>` : ""}
+                  ${sender.linkedin ? `<span style="color:#ccc;padding:0 6px">&middot;</span>
+                  <a href="${e(sender.linkedin)}" style="color:#C45C2E;text-decoration:none">LinkedIn</a>` : ""}
                 </p>
               </td>
             </tr>
           </table>
-        </td></tr>
+        </td></tr>` : ""}
 
         <!-- Attribution -->
         <tr><td style="padding:24px 40px 24px;border-top:1px solid #e5e5e5;background:#f9f9f7">
