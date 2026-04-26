@@ -7,8 +7,21 @@ import type { IntakeBrief } from "@/lib/intakeBrief";
 import { runPipeline } from "@/lib/pipelinePhases";
 import type { PipelineEvent } from "@/lib/pipelinePhases";
 import { runGeneralPipeline } from "@/lib/generalPipeline";
+import { runFastPipeline } from "@/lib/fastPipeline";
 
 export const maxDuration = 120;
+
+// On platforms with short function timeouts (Netlify Functions ≈ 26s), the
+// 4-call Opus pipeline can't finish before the connection is killed, which
+// surfaces as ERR_HTTP2_PROTOCOL_ERROR mid-stream. Set OPSADVISOR_FAST_MODE=1
+// to fall back to a single Sonnet 4.5 call that fits inside that budget.
+function isFastMode(): boolean {
+  const v = (process.env.OPSADVISOR_FAST_MODE ?? "").trim().toLowerCase();
+  if (v === "1" || v === "true" || v === "yes") return true;
+  if (v === "0" || v === "false" || v === "no") return false;
+  // Auto-enable on Netlify (NETLIFY=true is set in their build/runtime env).
+  return (process.env.NETLIFY ?? "").toLowerCase() === "true";
+}
 
 // Next.js gives shell env vars higher priority than .env.local, so if a
 // parent process injects an empty ANTHROPIC_API_KEY the file value is lost.
@@ -110,29 +123,17 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
   return brief;
 }
 
+function serializeEvent(event: PipelineEvent): string {
+  return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+} as const;
+
 export async function POST(request: Request): Promise<Response> {
-  const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-  let closed = false;
-
-  function emit(event: PipelineEvent): void {
-    if (closed) return;
-    void writer.write(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-  }
-
-  async function safeClose(): Promise<void> {
-    if (closed) return;
-    closed = true;
-    try {
-      await writer.close();
-    } catch {
-      // Writer may already be closed if the client disconnected.
-    }
-  }
-
-  // Parse optional custom-case body BEFORE entering the stream, so a parse
-  // error surfaces as a normal error event rather than a hang.
+  // Parse optional custom-case body up front so JSON errors surface cleanly.
   let briefOverride: IntakeBrief | null = null;
   let processNoteOverride: string | null = null;
 
@@ -146,61 +147,97 @@ export async function POST(request: Request): Promise<Response> {
       if (body.brief !== undefined) {
         briefOverride = sanitizeBrief(body.brief);
         if (!briefOverride) {
-          // Start the stream just to emit the error back.
-          void (async () => {
-            emit({
+          return new Response(
+            serializeEvent({
               event: "error",
               message:
                 "Custom case is missing required fields (business name, pain point, success metric).",
-            });
-            await safeClose();
-          })();
-          return new Response(readable, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-            },
-          });
+            }),
+            { headers: SSE_HEADERS }
+          );
         }
       }
       if (typeof body.processNote === "string" && body.processNote.trim()) {
         processNoteOverride = body.processNote;
       }
     } catch {
-      void (async () => {
-        emit({
+      return new Response(
+        serializeEvent({
           event: "error",
           message: "Could not parse custom case payload as JSON.",
-        });
-        await safeClose();
-      })();
-      return new Response(readable, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-      });
+        }),
+        { headers: SSE_HEADERS }
+      );
+    }
+  }
+
+  if (!hasApiKey()) {
+    return new Response(
+      serializeEvent({
+        event: "error",
+        message:
+          "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
+      }),
+      { headers: SSE_HEADERS }
+    );
+  }
+
+  const processNote = processNoteOverride ?? loadProcessNote();
+  const fast = isFastMode();
+
+  // Fast (non-streaming) path: collect all events, return as one buffered
+  // SSE-formatted response. Required on platforms whose streaming responses
+  // hard-cap at 10s (e.g. Netlify Functions). Sync functions get the full
+  // function timeout instead.
+  if (fast) {
+    const buffered: PipelineEvent[] = [];
+    const collect = (event: PipelineEvent): void => {
+      buffered.push(event);
+    };
+
+    try {
+      if (briefOverride) {
+        await runFastPipeline(briefOverride, processNote, null, collect);
+      } else {
+        const { records } = loadDataset();
+        const analysis = analyzePipeline(records);
+        await runFastPipeline(DEMO_INTAKE_BRIEF, processNote, analysis, collect);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      buffered.push({ event: "error", message });
+    }
+
+    const body = buffered.map(serializeEvent).join("");
+    return new Response(body, { headers: SSE_HEADERS });
+  }
+
+  // Streaming path (Vercel / local dev): emit events incrementally.
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  let closed = false;
+
+  function emit(event: PipelineEvent): void {
+    if (closed) return;
+    void writer.write(encoder.encode(serializeEvent(event)));
+  }
+
+  async function safeClose(): Promise<void> {
+    if (closed) return;
+    closed = true;
+    try {
+      await writer.close();
+    } catch {
+      // Writer may already be closed if the client disconnected.
     }
   }
 
   void (async () => {
     try {
-      if (!hasApiKey()) {
-        emit({
-          event: "error",
-          message:
-            "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
-        });
-        return;
-      }
-
-      const processNote = processNoteOverride ?? loadProcessNote();
-
       if (briefOverride) {
-        // Custom case: general-purpose pipeline — no dataset dependency
         await runGeneralPipeline(briefOverride, processNote, "", emit);
       } else {
-        // Demo case: data-driven pipeline with pre-computed CRM metrics
         const { records } = loadDataset();
         const analysis = analyzePipeline(records);
         await runPipeline(DEMO_INTAKE_BRIEF, analysis, processNote, emit);
@@ -213,10 +250,5 @@ export async function POST(request: Request): Promise<Response> {
     }
   })();
 
-  return new Response(readable, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-    },
-  });
+  return new Response(readable, { headers: SSE_HEADERS });
 }
