@@ -233,8 +233,8 @@ export function LandingHero({ onDemo, onStart, onPreset }: { onDemo: () => void;
               className="mt-8 flex flex-col gap-1.5"
               style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--ink-4)" }}
             >
-              <span>SOC&nbsp;2 in progress</span>
               <span>Read-only data access</span>
+              <span>No data retained after run</span>
               <span>Hackathon build, v0.4</span>
             </div>
           </div>

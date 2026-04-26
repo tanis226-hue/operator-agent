@@ -1,5 +1,7 @@
 # Operator Agent Data Specification
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. This spec describes the bundled active-demo dataset (`data/acquisition_pipeline_cases.csv`, 120 rows) and the process note used to ground the model. User-supplied data sources (CSV upload, read-only DB query, public share-link fetch) are documented in [`current-state-and-purpose.md`](current-state-and-purpose.md).
+
 This document defines the synthetic dataset and process note used by the MVP.
 
 ## 1) Dataset Overview

@@ -1,10 +1,55 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 import { EXAMPLE_CASES } from "@/lib/exampleCases";
 import { DatabaseConnector } from "./DatabaseConnector";
 import { CloudFileConnector } from "./CloudFileConnector";
+
+// Pull embedded blocks (FILE and DB QUERY) out of a process note so we can
+// show chips for files that came in pre-attached (e.g. from a preset case)
+// or via the DB / cloud connectors. Counts data rows for CSV-shaped content.
+function extractEmbeddedFiles(note: string): Array<{ name: string; size: string }> {
+  if (!note) return [];
+  const out: Array<{ name: string; size: string }> = [];
+
+  // FILE blocks: `--- FILE: name ---\n...\n--- END: name ---`
+  const fileRe = /--- FILE: ([^\n]+?) ---\n([\s\S]*?)\n--- END: \1 ---/g;
+  let m: RegExpExecArray | null;
+  while ((m = fileRe.exec(note)) !== null) {
+    const rawName = m[1].trim();
+    const nameMatch = rawName.match(/^(.*?)(?:\s*\((\d+)\s*rows\))?$/);
+    const name = nameMatch?.[1]?.trim() || rawName;
+    const declaredRows = nameMatch?.[2] ? parseInt(nameMatch[2], 10) : null;
+    const body = m[2];
+    let size: string;
+    if (declaredRows !== null) {
+      size = `${declaredRows} rows`;
+    } else if (/\.csv$/i.test(name) || /,/.test(body.split("\n")[0] ?? "")) {
+      const lines = body.split("\n").filter((l) => l.trim().length > 0);
+      size = `${Math.max(0, lines.length - 1)} rows`;
+    } else {
+      const bytes = new Blob([body]).size;
+      size = bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    out.push({ name, size });
+  }
+
+  // DB QUERY blocks: `--- DB QUERY: label (N rows) ---\n...\n--- END DB QUERY ---`
+  const dbRe = /--- DB QUERY: ([^\n]+?) ---\n[\s\S]*?\n--- END DB QUERY ---/g;
+  while ((m = dbRe.exec(note)) !== null) {
+    const rawName = m[1].trim();
+    const nameMatch = rawName.match(/^(.*?)(?:\s*\((\d+)\s*rows\))?$/);
+    const label = nameMatch?.[1]?.trim() || rawName;
+    const rows = nameMatch?.[2] ? parseInt(nameMatch[2], 10) : null;
+    out.push({
+      name: `DB: ${label.slice(0, 40)}`,
+      size: rows !== null ? `${rows} rows` : "",
+    });
+  }
+
+  return out;
+}
 
 type Props = {
   brief: IntakeBrief;
@@ -24,7 +69,17 @@ export function IntakeBriefEditor({
   onClose,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: string }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: string }>>(() =>
+    extractEmbeddedFiles(processNote)
+  );
+
+  // If a preset case (or any external loader) replaces the process note with
+  // one that already contains `--- FILE: ... ---` blocks, surface those as
+  // file chips so the user can see what is being analyzed. Chips reflect the
+  // embedded blocks present in the note at any moment.
+  useEffect(() => {
+    setUploadedFiles(extractEmbeddedFiles(processNote));
+  }, [processNote]);
 
   function set<K extends keyof IntakeBrief>(key: K, value: IntakeBrief[K]) {
     onBriefChange({ ...brief, [key]: value });

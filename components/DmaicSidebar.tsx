@@ -50,9 +50,10 @@ export function DmaicSidebar({ visible = true }: Props) {
         );
       if (!present.length) return;
 
-      // Edge case: at very top of page → always highlight the first section.
+      // Edge case: at very top of page → always highlight Owner Brief
+      // regardless of its rendered height (it may be empty on first paint).
       if (window.scrollY < 10) {
-        setActiveId(present[0].s.id);
+        setActiveId("section-brief");
         return;
       }
 
@@ -94,7 +95,10 @@ export function DmaicSidebar({ visible = true }: Props) {
       });
     }
 
-    compute();
+    // Delay the first compute so the page's scroll-to-top (fired on stage
+    // change in page.tsx) has time to settle. The initial useState default
+    // of "section-brief" is correct until the user actually scrolls.
+    const initTimer = window.setTimeout(compute, 200);
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
 
@@ -103,6 +107,7 @@ export function DmaicSidebar({ visible = true }: Props) {
     const interval = window.setInterval(compute, 1000);
 
     return () => {
+      window.clearTimeout(initTimer);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       window.clearInterval(interval);

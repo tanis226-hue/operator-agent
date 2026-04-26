@@ -1,208 +1,217 @@
-# Operator Agent — Design System
+# OpsAdvisor — Design System
 
-This file documents the visual design system for Operator Agent. It is the source of truth for colors, typography, spacing, components, and interaction patterns. Compatible with Claude Design handoff format.
+This file documents the visual design system for **OpsAdvisor** (repo codename `operator-agent`). It is the source of truth for colors, typography, spacing, and component patterns. The implementation lives in [tailwind.config.ts](tailwind.config.ts) and [app/globals.css](app/globals.css); component primitives live in [components/editorial/](components/editorial/).
 
 ---
 
 ## Brand
 
-**Product name:** Operator Agent  
-**Tagline:** Diagnose where leads are leaking, fix the biggest operational breakdown, and put controls in place.  
-**Audience:** Business owners and department heads — not developers or analysts.  
-**Tone:** Direct, credible, calm. Not hypey, not academic, not chatbot-first.  
-**Built with:** Claude Opus 4.7 via Anthropic API
+- **Product name:** OpsAdvisor
+- **Repo / internal codename:** operator-agent
+- **Tagline:** Diagnose where a workflow is leaking, fix the biggest operational breakdown, and put controls in place.
+- **Audience:** Owners, administrators, and program leads — not developers or analysts.
+- **Tone:** Direct, credible, calm. Editorial, not chatbot-first, not pitch-deck flashy.
+- **Built with:** Claude Opus 4.7 via the Anthropic API.
 
 ---
 
 ## Color Tokens
 
-### Primitive palette
+Defined in [tailwind.config.ts](tailwind.config.ts) and mirrored as CSS custom properties in [app/globals.css](app/globals.css).
 
-| Token | Hex | Usage |
-|---|---|---|
-| `coral-600` | `#C96442` | Primary accent — buttons, highlights, active state |
-| `coral-500` | `#D97756` | Accent hover state |
-| `coral-50` | `#FEF3EE` | Accent soft background |
-| `cream-50` | `#FAF9F7` | Page canvas / body background |
-| `cream-100` | `#F3F1ED` | Subtle section fill |
-| `stone-900` | `#1C1917` | Primary text |
-| `stone-600` | `#57534E` | Secondary text |
-| `stone-400` | `#A8A29E` | Muted / placeholder text |
-| `stone-200` | `#E7E5E4` | Border / divider |
-| `stone-100` | `#F5F5F4` | Card alternative fill |
-| `white` | `#FFFFFF` | Card surface |
-| `red-500` | `#EF4444` | Destructive / critical alert |
-| `orange-500` | `#F97316` | Warning / stalled indicator |
+### Surfaces
 
-### Semantic aliases (Tailwind config)
+| Token       | Hex       | Usage                                |
+| ----------- | --------- | ------------------------------------ |
+| `canvas`    | `#F6F3EC` | Page canvas / parchment background   |
+| `surface`   | `#FBFAF6` | Lifted card surface                  |
+| `bone`      | `#ECE5D5` | Subtle section fill                  |
 
-```
-canvas   → cream-50   (#FAF9F7)
-surface  → white      (#FFFFFF)
-ink      → stone-900  (#1C1917)
-ink-soft → stone-600  (#57534E)
-ink-muted→ stone-400  (#A8A29E)
-line     → stone-200  (#E7E5E4)
-accent   → coral-600  (#C96442)
-accent-soft → coral-50 (#FEF3EE)
-```
+### Ink
+
+| Token       | Hex       | Usage                                |
+| ----------- | --------- | ------------------------------------ |
+| `ink`       | `#1A1714` | Primary text                         |
+| `ink-soft`  | `#4A413A` | Secondary text                       |
+| `ink-muted` | `#8B7F73` | Muted text / labels                  |
+| `ink-faint` | `#B8AC9D` | Hairline / placeholder               |
+
+### Lines
+
+| Token       | Hex       | Usage                                |
+| ----------- | --------- | ------------------------------------ |
+| `line`      | `#DAD2C2` | Default border / divider             |
+| `line-soft` | `#E8E1D2` | Subtle inset border                  |
+
+### Accent — terracotta
+
+| Token            | Hex       | Usage                              |
+| ---------------- | --------- | ---------------------------------- |
+| `accent`         | `#B8472A` | Primary accent — buttons, headlines |
+| `accent.hover`   | `#8E3416` | Hover state                        |
+| `accent.soft`    | `#F7F1ED` | Soft accent surface                |
+| `accent.border`  | `#DCC8BD` | Soft accent border                 |
+
+### Functional palette
+
+| Family   | Default   | Soft       | Border     | Ink        | Usage                            |
+| -------- | --------- | ---------- | ---------- | ---------- | -------------------------------- |
+| `ochre`  | `#B8893A` | `#F9F5E8`  | `#E5D9C0`  | `#7A5C28`  | Warning / measure callouts       |
+| `moss`   | `#5C6E3F` | `#F3F4ED`  | `#D0D5C5`  | `#3D4A29`  | Confirmed / on-track signals     |
+| `rust`   | `#8E3416` | `#F9F2ED`  | `#E5D0C8`  | `#7D4535`  | Alerts / leakage / risk markers  |
+
+The "soft" / "border" variants were intentionally lightened so callout boxes (revenue at risk, metric cards, alert badges) sit cleanly on the parchment canvas rather than competing with it.
 
 ---
 
 ## Typography
 
-**Font stack:** `Söhne, ui-sans-serif, system-ui, -apple-system, Helvetica Neue, Arial, sans-serif`  
-*(Falls back to system sans-serif if Söhne is unavailable)*
+Fonts are loaded as CSS variables (`--font-sans`, `--font-mono`) in [app/layout.tsx](app/layout.tsx). The serif slot reuses the sans variable today; **Instrument Serif** is the intended fallback when bundled.
 
-| Role | Size | Weight | Line height |
-|---|---|---|---|
-| Page heading | 24px / 1.5rem | 600 semibold | 1.25 |
-| Section heading | 18px / 1.125rem | 600 semibold | 1.3 |
-| Card heading | 15px / 0.9375rem | 600 semibold | 1.3 |
-| Body | 14px / 0.875rem | 400 regular | 1.6 |
-| Small / label | 12px / 0.75rem | 500 medium | 1.4 |
-| Eyebrow | 11px / 0.6875rem | 600 semibold | 1.4 — uppercase + tracked |
-| Metric value | 28px / 1.75rem | 700 bold | 1 |
+```text
+--sans:  Inter, system-ui, -apple-system, sans-serif
+--serif: Instrument Serif, Georgia, serif (currently maps to --sans)
+--mono:  JetBrains Mono, ui-monospace, Menlo, monospace
+```
+
+Editorial size scale (see `app/globals.css`):
+
+| Class             | Size                    | Weight | Family | Usage                          |
+| ----------------- | ----------------------- | ------ | ------ | ------------------------------ |
+| `h-display`       | clamp(44px, 5.5vw, 70px)| 400    | serif  | Hero / landing headline        |
+| `h-page`          | 52px                    | 400    | serif  | Page title                     |
+| `h-section`       | 38px                    | 400    | serif  | Section heading                |
+| `h-card`          | 26px                    | 400    | serif  | Card heading                   |
+| `eyebrow`         | 12px uppercase          | 600    | mono   | Section label above headings   |
+| `uppercase-mono`  | 11px tracked            | 500    | mono   | Small all-caps labels          |
 
 ---
 
-## Spacing
+## Spacing & Layout
 
-Base unit: **4px (0.25rem)**
+Base unit: **4px**.
 
-| Token | Value | Usage |
-|---|---|---|
-| `xs` | 4px | Icon gap, badge padding |
-| `sm` | 8px | Tight internal spacing |
-| `md` | 16px | Card internal padding (horizontal) |
-| `lg` | 24px | Card internal padding, section gap |
-| `xl` | 32px | Major section spacing |
-| `2xl` | 48px | Page-level spacing |
-
-Card padding: **24px (horizontal) × 20px (vertical)**  
-Section gap: **20px**  
-Page max-width: **1024px (max-w-5xl)**  
-Page horizontal padding: **24px**
+- Card padding: 24px (horizontal) × 20px (vertical).
+- Section gap: 20–32px between cards; 48px between major regions.
+- Page max widths: `max-w-page` (1024px) for reports, `max-w-shell` (1280px) for landing / wizard.
+- Page horizontal padding: 24px on mobile, 48px (`px-12`) on desktop.
 
 ---
 
 ## Elevation & Borders
 
-| Level | Shadow | Border | Radius | Usage |
-|---|---|---|---|---|
-| Card | `0 1px 3px rgba(28,25,23,.05), 0 1px 2px rgba(28,25,23,.07)` | `1px solid #E7E5E4` | `16px` | Default card |
-| Summary card | same | `1px solid rgba(201,100,66,.25)` + `ring-1 ring-coral/10` | `16px` | Executive summary |
-| Button | `0 1px 2px rgba(28,25,23,.08)` | none | `8px` | Primary CTA |
-| Metric card | `0 1px 2px rgba(28,25,23,.04)` | `1px solid #E7E5E4` | `12px` | KPI cards |
+| Level       | Shadow                                                                     | Border                  | Radius |
+| ----------- | -------------------------------------------------------------------------- | ----------------------- | ------ |
+| Card        | `0 1px 2px rgba(26,23,20,.04), 0 6px 20px -8px rgba(26,23,20,.08)`          | `1px solid line`        | 16px   |
+| Card lift   | `0 1px 2px rgba(26,23,20,.04), 0 12px 32px -10px rgba(26,23,20,.14)`        | `1px solid line`        | 16px   |
+| Warm card   | `0 2px 4px rgba(26,23,20,.03), 0 10px 32px -8px rgba(184,71,42,.10)`        | `1px solid accent.border` | 16px |
+| Button      | `0 1px 2px rgba(26,23,20,.12)`                                              | none                    | 8px    |
+| Metric card | inset / soft                                                                | `1px solid line`        | 10px   |
 
 ---
 
-## Components
+## Component Patterns
 
-### Button — Primary
-- Background: `accent` (#C96442)
-- Text: white, 14px, semibold
-- Padding: 8px 20px
-- Radius: 8px
-- Hover: `#B85A3A` (darken 8%)
-- Disabled: opacity 50%, cursor not-allowed
+### Button — primary
+
+- Background `accent` (#B8472A), white text, 14px semibold, padding `8px 20px`, radius 8px.
+- Hover: `accent.hover` (#8E3416).
+- Disabled: 50% opacity, `cursor-not-allowed`.
 
 ### Card
-- Background: white
-- Border: 1px solid `line`
-- Radius: 16px
-- Shadow: card level
-- Header: 16px font, semibold, with eyebrow above
-- Content padding: 24px
 
-### Metric Card (KPI)
-- Eyebrow: 11px uppercase, stone-400
-- Value: 28px bold, ink or accent
-- Sub: 12px, stone-400
-- Alert state: orange-50 background, orange-200 border, orange-600 value
-- Highlight state: coral-50 background, coral-200 border, coral accent value
-- Radius: 12px
+- Surface white, border `1px solid line`, radius 16px, card shadow.
+- Header anatomy: `[Eyebrow]` + `[Phase number]` row, then the card title in serif.
 
-### Eyebrow / Section label
-- 11px, semibold, uppercase, letter-spacing 0.08em
-- Color: stone-400 (muted)
-- Always appears above a heading
+### Metric card (KPI)
 
-### Phase badge
-- 10px, stone-400
-- Rounded full, bordered, canvas background
-- Shows "01" through "09"
+- Eyebrow + label up top, value in serif at 26px.
+- Variants: default (canvas), highlight (`accent.soft` / `accent.border`), warning (`ochre.soft` / `ochre.border`), alert (`rust.soft` / `rust.border`).
+
+### Phase marker
+
+- Small numbered chip (`01` … `09`), monospace, faint border, used in the DMAIC sidebar and atop phase cards.
 
 ### Alert badge
-- Severity critical: red-50 bg, red-200 border, red-700 text
-- Severity warning: orange-50 bg, orange-200 border, orange-700 text
-- Padding: 12px 16px, radius 8px
 
-### Progress / bar chart
-- Track: stone-200, h-2, radius full
-- Fill: accent for good, red-400 for bad, orange-400 for warning
-- No animation in print / reduced-motion
+- Critical: `rust.soft` background, `rust.border` border, `rust` text.
+- Warning: `ochre.soft` / `ochre.border` / `ochre`.
+- Padding `12px 16px`, radius 8px.
+
+### Editorial primitives
+
+Implemented under [components/editorial/](components/editorial/):
+
+- `BigMetric` — hero metric display with eyebrow + delta.
+- `SmallMetric` — supporting diagnostic metric.
+- `PhaseMarker` — numbered DMAIC chip.
+- `Pill` — small status tag.
+- `SectionHead` — eyebrow + serif heading + optional rule.
+
+Charts wrap Recharts in [components/charts/](components/charts/) (`FunnelChart`, `HBarComparison`, `ParetoChart`, `Sparkline`, `SplitBar`).
 
 ---
 
 ## Layout Patterns
 
-### Single-page app structure
-```
-Header (sticky, 72px)
-  └─ Product name + subtitle
-  └─ Workflow badge (right)
+### Sticky header
 
-Main content (max-w-5xl, centered, px-24 py-32)
-  └─ Intake brief card (full-width or collapsed banner)
-  └─ Run analysis section (full-width)
-  └─ Results label divider
-  └─ Ordered phase cards (gap-20)
+- 72px tall, `rgba(246,243,236,0.92)` with `backdrop-filter`.
+- Left: 30×30 accent tile with a serif "O" + product name "OpsAdvisor" + monospace subtitle.
+- Right: nav (Process, Cases) on landing, otherwise model / status badge.
 
-Footer (text-xs, muted)
-```
+### Single-page report flow
 
-### Card header anatomy
 ```
-[Eyebrow label]          [Phase number badge]
-[Card title — semibold]
+Header (sticky)
+  ├─ DmaicSidebar (left rail, persistent during analysis)
+  └─ Main column (max-w-page)
+       ├─ ExecutiveSummary card (above the fold)
+       ├─ Phase cards in DMAIC order (Define → Measure → Analyze → Improve → Control)
+       └─ NextStepsCTA (copy / save .docx / save .pdf / email / waitlist)
+
+Footer
 ```
 
 ### Metric row rule
-- First metric row: exactly 2 cards (headline pair only)
-- Second metric row: up to 3 supporting diagnostics
-- Never a flat wall of equal-weight KPIs
+
+- First row: exactly 2 cards — primary metric + secondary diagnostic.
+- Second row: up to 3 supporting diagnostics.
+- Never present a flat wall of equal-weight KPIs.
 
 ---
 
 ## Motion
 
-- Transition duration: 150ms ease-out for hover/focus
-- Loading animation: `animate-pulse` for dots, 3-dot sequence with 200ms delay offset
-- No entrance animations (demo reliability over flash)
-- Reduced motion: respect `prefers-reduced-motion`
+- Transition: 150ms ease-out for hover/focus.
+- Keyframes (Tailwind): `fade-in`, `fade-in-up`, `slide-in-right`, `pulse-soft`, `draw-bar`.
+- Loading uses `animate-pulse-soft` on phase dots.
+- Respect `prefers-reduced-motion`; no entrance animations on print.
 
 ---
 
 ## Naming rules
 
-- Public workflow label: **Lead Intake and Conversion Bottleneck** — used verbatim in all UI, never abbreviated or swapped
-- Product: **Operator Agent** — always two words, capital O, capital A
-- Built with: **Claude Opus 4.7** — include in header and footer
-- Do not use: "autonomous", "agentic orchestration", "DMAIC" in user-facing copy
+- Public workflow label for the active demo: **Lead Intake and Conversion Bottleneck** — used verbatim.
+- Product name in UI / emails / exports: **OpsAdvisor** (one word, capital O, capital A).
+- Repo / build-time identifier: `operator-agent`.
+- Model: **Claude Opus 4.7**.
+- Avoid in user-facing copy: "autonomous", "agentic orchestration", "the model thinks". DMAIC vocabulary is allowed in section labels.
 
 ---
 
-## Claude Design Handoff Notes
+## Handoff notes
 
-This project is a Next.js 14 + TypeScript + Tailwind CSS application.  
-Design token source: `tailwind.config.ts`  
-Component directory: `components/`  
-Layout: `app/layout.tsx`, `app/page.tsx`  
-Data: local CSV + Anthropic API (`lib/buildOutputPayload.ts`)
+This project is a Next.js 14 + TypeScript + Tailwind CSS application.
 
-To apply a new design from Claude Design:
-1. Export the React/Tailwind component bundle
-2. Drop components into `components/`
-3. Update color tokens in `tailwind.config.ts` to match the generated palette
-4. Restart `npm run dev`
+- Design token source: [tailwind.config.ts](tailwind.config.ts).
+- CSS custom properties + editorial typography: [app/globals.css](app/globals.css).
+- Component directory: [components/](components/).
+- Layout / fonts: [app/layout.tsx](app/layout.tsx), [app/page.tsx](app/page.tsx).
+- Pure design exploration scaffolding (not shipped) lives under [Design/](Design/).
+
+To apply a new design pass:
+
+1. Update color tokens in `tailwind.config.ts` and the matching custom properties in `app/globals.css`.
+2. Drop or update components under `components/` (and `components/editorial/` for typographic primitives).
+3. Run `npm run dev`, then `npm run typecheck` before committing.

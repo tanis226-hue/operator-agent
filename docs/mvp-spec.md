@@ -1,5 +1,7 @@
 # Operator Agent MVP Spec
 
+> **Naming note (April 2026).** This document was written during the early build phase. The repository / internal codename is still `operator-agent`, but the user-facing product name is now **OpsAdvisor**. Read every reference to "Operator Agent" below as the product now shipped as **OpsAdvisor**. The MVP scope, workflow anchor (Lead Intake and Conversion Bottleneck), and output contracts described here are still authoritative for the active demo.
+
 ## 1) Project Overview
 
 **Project name:** Operator Agent  
@@ -7,11 +9,11 @@
 **Build context:** Built for the “Built with Opus 4.7: a Claude Code hackathon”  
 **Build mode:** Lean, solo-buildable, hackathon-ready MVP
 
-Operator Agent is an operational diagnosis and improvement product built for business owners and operators. It takes a business problem, a structured context brief, and a small set of process evidence, then runs a full DMAIC-style improvement loop from intake to control.
+Operator Agent is an operational diagnosis and improvement product built for owners and operators. It takes a operational problem, a structured context brief, and a small set of process evidence, then runs a full DMAIC-style improvement loop from intake to control.
 
 For the MVP, Operator Agent is focused on a single workflow: **Lead Intake and Conversion Bottleneck**. The product analyzes where leads are stalling or dropping out, identifies the highest-impact operational breakdown, recommends the most practical fix, and leaves behind a control package so the issue does not return.
 
-The point of the MVP is not to show a generic chatbot or an analytics dashboard. The point is to show a clear operational diagnosis, a credible first fix, and a monitoring package that a business owner could actually use.
+The point of the MVP is not to show a generic chatbot or an analytics dashboard. The point is to show a clear operational diagnosis, a credible first fix, and a monitoring package that a operator could actually use.
 
 ## 2) Core Product Promise
 

@@ -1,5 +1,7 @@
 # Operator Agent Output Contracts
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. The TypeScript shape of every artifact described below is implemented in [`../lib/outputTypes.ts`](../lib/outputTypes.ts) as the `GeneratedOutputPayload` contract. Tone, ordering, and length rules in this doc remain authoritative.
+
 This document defines the exact artifacts the MVP must generate. These contracts are meant to keep the product focused, make Claude Code implementation easier, and ensure the demo stays legible to judges and business users.
 
 ## Global Rules

@@ -1,5 +1,7 @@
 # Operator Agent Demo Script
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. The demo script below targets the active demo (Lead Intake and Conversion Bottleneck). For an up-to-date overview of all three entry paths (active demo, preset cases, custom diagnosis), see [`current-state-and-purpose.md`](current-state-and-purpose.md).
+
 This script is designed for a 3-minute hackathon demo.
 
 ## Demo Objective

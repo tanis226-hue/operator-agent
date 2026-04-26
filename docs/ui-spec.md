@@ -1,5 +1,7 @@
 # Operator Agent UI Specification
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. This document captures the original MVP UI scope. The shipped UI extends it with a landing page, an onboarding wizard, a privacy disclaimer, post-report CTAs (copy / save .docx / save .pdf / email / waitlist), and a DMAIC sidebar — all described in [`current-state-and-purpose.md`](current-state-and-purpose.md). Tokens and typography live in [`../DESIGN.md`](../DESIGN.md).
+
 This document defines the minimum UI needed for the MVP.
 
 ## Product Design Goal

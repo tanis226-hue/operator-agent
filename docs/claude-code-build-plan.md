@@ -1,5 +1,7 @@
 # Claude Code Build Plan
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. This plan captures the original phased build order. The product has now shipped through every phase below; treat this document as a historical record of how the MVP was assembled rather than an active task list.
+
 This document defines the implementation order for building Operator Agent with Claude Code.
 
 ## Build Principle

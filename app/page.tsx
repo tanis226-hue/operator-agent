@@ -69,6 +69,7 @@ export default function HomePage() {
   }, [stage, hydrated]);
 
   function handleWizardComplete(result: WizardResult) {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setWizardResult(result);
     setStage("analyzing");
   }

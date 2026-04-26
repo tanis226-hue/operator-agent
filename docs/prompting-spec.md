@@ -1,5 +1,7 @@
 # Operator Agent Prompting Specification
 
+> **Naming note.** Internal codename is `operator-agent`; the live product is **OpsAdvisor**. Prompt voice rules below still apply verbatim; substitute "OpsAdvisor" for "Operator Agent" anywhere it would surface in user-facing copy.
+
 This document defines how the language model should behave when generating business-facing artifacts for Operator Agent.
 
 ## 1) Prompting Goal

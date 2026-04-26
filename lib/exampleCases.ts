@@ -104,6 +104,11 @@ H-022,Product,2026-04-06,18,5,true,true,true,true,23,signed_off_on_time
 H-023,Engineering,2026-04-13,11,1,false,false,true,false,40,signed_off_late
 H-024,Customer Success,2026-04-13,16,4,false,true,true,true,28,signed_off_late
 H-025,Sales,2026-04-20,15,3,false,true,true,false,32,signed_off_late
+H-026,Engineering,2026-04-20,10,1,false,false,false,false,43,still_pending
+H-027,Marketing,2026-04-20,18,6,true,true,true,true,21,signed_off_on_time
+H-028,Finance,2026-04-20,22,9,true,true,true,true,19,signed_off_on_time
+H-029,Engineering,2026-04-20,8,0,false,false,true,false,41,signed_off_late
+H-030,Product,2026-04-20,17,5,true,true,true,true,22,signed_off_on_time
 --- END: onboarding_cases_last_90_days.csv ---
 
 --- FILE: pre_boarding_handoff_log.txt ---
@@ -111,6 +116,7 @@ H-025,Sales,2026-04-20,15,3,false,true,true,false,32,signed_off_late
 2026-02-23 H-010 Engineering hire: HR onboarding email sent same-day. IT ticket opened on start date itself. Manager assumed IT had been notified at offer; IT assumed manager would file the request. Hire idle for first 3 days.
 2026-03-09 H-015 Engineering hire: same pattern. Manager out of office during pre-boarding window, no backup assigned. IT ticket opened day 0. No Day 1 setup completed. Orientation modules not assigned.
 2026-04-06 H-021 Engineering hire: ticket opened day 0. Hire spent first week shadowing without credentials, manually copying data via screen-share.
+2026-04-20 H-026 Engineering hire: same pattern continues. IT ticket opened day -1, laptop not delivered until day 3.
 PATTERN NOTE FROM HR LEAD (2026-04-15): "Every Engineering hire in the last 90 days had IT provisioning open less than 3 business days before start. Sales and Customer Success hires consistently have tickets opened 3+ days early and they hit Day 1 ready. The handoff between offer-acceptance and IT-ticket-creation is where engineering-hire pre-boarding falls apart."
 --- END: pre_boarding_handoff_log.txt ---`,
   },

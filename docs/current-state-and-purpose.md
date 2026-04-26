@@ -72,14 +72,14 @@ OpsAdvisor is a Next.js 14 + React 18 + TypeScript + Tailwind app, with Recharts
 │   loadDataset / parseCSV ─► analyzePipeline (deterministic stats)│
 │   pipelinePhases (demo)   │                                      │
 │   generalPipeline (custom)│  ─► Anthropic Messages API           │
-│   agentLoop / agentTools  │     (Claude Opus 4.7)                │
-│   buildOutputPayload      ─► GeneratedOutputPayload              │
+│   buildOutputPayload      │     (Claude Opus 4.7)                │
+│                           ─► GeneratedOutputPayload              │
 │   benchmarks / intakeContext (grounding)                         │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The full output contract (`GeneratedOutputPayload`) is defined in [lib/outputTypes.ts](lib/outputTypes.ts) and validated server-side with a Zod schema in [lib/agentTools.ts](lib/agentTools.ts) before it is allowed to leave the API.
+The full output contract (`GeneratedOutputPayload`) is defined in [lib/outputTypes.ts](lib/outputTypes.ts). Each phase in [lib/pipelinePhases.ts](lib/pipelinePhases.ts) / [lib/generalPipeline.ts](lib/generalPipeline.ts) parses model output into the typed phase shape, and the final phase emits a `GeneratedOutputPayload` that conforms to the contract before leaving the API.
 
 ---
 
@@ -136,10 +136,7 @@ These numbers are passed into the prompts so the model is anchored to actual fig
 
 For the custom run, the `runGeneralPipeline` path operates on the `IntakeBrief` and any user-provided raw data (CSV preview, DB query result preview, or cloud-extracted text), without assuming the lead-pipeline schema.
 
-The agent layer in [lib/agentLoop.ts](lib/agentLoop.ts) and [lib/agentTools.ts](lib/agentTools.ts) provides a generic Claude tool-use loop with:
-
-- A terminal tool (`emit_final_report`) whose input is the agent's output.
-- Zod validation of the final payload, with validation errors fed back as a tool result so the agent can self-correct in the same loop.
+The simpler single-call assembly path in [lib/buildOutputPayload.ts](lib/buildOutputPayload.ts) wraps the master prompt in [lib/prompts.ts](lib/prompts.ts) and returns a `GeneratedOutputPayload`. The shipped pipelines (`pipelinePhases.ts`, `generalPipeline.ts`) instead run the multi-phase DMAIC flow and stream `PipelineEvent`s back to the client; the final phase prompt enforces the same output shape, and the route refuses to emit malformed JSON.
 
 ---
 
@@ -158,7 +155,7 @@ The single canonical output of a run is `GeneratedOutputPayload` ([lib/outputTyp
 - **Alert Rules** — trigger / action / severity (`warning` | `critical`).
 - **Prioritized Actions** — action / when (`this week` | `this month` | `this quarter`).
 
-The Zod schema in [lib/agentTools.ts](lib/agentTools.ts) enforces the shape; the route refuses to ship malformed payloads.
+The TypeScript contract in [lib/outputTypes.ts](lib/outputTypes.ts) defines the shape; the pipeline parses each phase output and the final payload is emitted only after a successful `JSON.parse` that matches the expected structure.
 
 The `AnalysisResults` card stack renders this payload section by section, with charts (funnel, owner comparison, stage drop-off, Pareto, sparklines, split bars) defined under [components/charts/](components/charts/) and editorial primitives under [components/editorial/](components/editorial/).
 
@@ -246,7 +243,6 @@ components/                 React UI
   editorial/                Typographic primitives
 
 lib/                        Server-side logic
-  agentLoop.ts, agentTools.ts        Generic Claude tool-use loop + Zod-validated terminal tool
   pipelinePhases.ts                  Demo (lead-pipeline) DMAIC phases
   generalPipeline.ts                 Custom-workflow DMAIC phases
   analyzePipeline.ts                 Deterministic stats over the demo CSV
@@ -276,7 +272,6 @@ From [package.json](package.json):
 - **Styling:** Tailwind CSS 3.4
 - **Charts:** `recharts@2.12.7`
 - **Model:** `@anthropic-ai/sdk@^0.90.0` (Claude Opus 4.7)
-- **Validation:** `zod@^4.3.6`
 - **DB connectors:** `pg@^8.20.0`, `mysql2@^3.22.2` (read-only)
 - **Document parsers / writers:** `xlsx@^0.18.5`, `mammoth@^1.12.0`, `docx@^9.6.1`
 - **Email:** `resend@^6.12.2`
@@ -301,7 +296,7 @@ What is working today:
 - Privacy disclaimer in the wizard plus a standalone privacy page.
 - Report export to **.docx**, **printable PDF**, **.txt**, plus **copy to clipboard** and **email via Resend**.
 - Waitlist capture wired to a Resend audience with owner notification.
-- Zod-validated `GeneratedOutputPayload` with model self-correction on validation failure.
+- Typed `GeneratedOutputPayload` enforced through structured phase prompts, with a fallback to the canned demo payload if parsing fails.
 - Deterministic stats layer that grounds the model in real numbers for the demo dataset.
 - Curated benchmark library with citable sources surfaced in the Measure section.
 - Design system fully wired through Tailwind tokens, editorial primitives, and chart wrappers.
