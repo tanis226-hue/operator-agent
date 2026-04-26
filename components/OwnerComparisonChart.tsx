@@ -65,7 +65,7 @@ export function OwnerComparisonChart({ data, baseline }: Props) {
               <Cell
                 key={entry.label}
                 fill={
-                  entry.conversionRate >= baseline ? "#C96442" : "#ef4444"
+                  entry.conversionRate >= baseline ? "#16a34a" : "#ef4444"
                 }
               />
             ))}

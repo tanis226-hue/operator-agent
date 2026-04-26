@@ -1,8 +1,8 @@
 {
   "executiveSummary": {
-    "headlineFinding": "Conversion from new lead to booked meeting is running at 44.2% — well below what the pipeline should be delivering — because too many leads are receiving slow or inconsistent follow-up before a meeting is scheduled.",
+    "headlineFinding": "Conversion from new lead to booked meeting is running at 44.2%, well below what the pipeline should be delivering, because too many leads are receiving slow or inconsistent follow-up before a meeting is scheduled.",
     "whyItMatters": "With a median first response of 9.6 hours against a 4-hour SLA, and 26.7% of leads flagged for missed follow-up, a significant share of qualified demand is going cold before it ever reaches a booking.",
-    "primaryCause": "The strongest operational signal is delayed first response. Leads contacted within 4 hours convert at 65.8%, while leads contacted after 24 hours convert at only 15.8% — a 50 percentage-point gap that is the clearest driver of pipeline leakage.",
+    "primaryCause": "The strongest operational signal is delayed first response. Leads contacted within 4 hours convert at 65.8%, while leads contacted after 24 hours convert at only 15.8%, a 50 percentage-point gap that is the clearest driver of pipeline leakage.",
     "recommendedAction": "Enforce a 4-business-hour first-response SLA immediately, require a logged next step on every qualified lead before end of day, and escalate any lead with no activity after 48 hours to the pipeline manager.",
     "monitoringPlan": "Track conversion rate from new lead to booked meeting weekly, monitor median first-response time daily, and alert when stalled lead rate exceeds 15% or any high-value lead goes untouched past SLA."
   },
@@ -19,7 +19,7 @@
       {
         "rank": 1,
         "factor": "Delayed first response",
-        "finding": "Leads contacted within 4 hours convert at 65.8%, while leads not reached until after 24 hours convert at only 15.8% — a 50 percentage-point difference that is the dominant driver of pipeline leakage."
+        "finding": "Leads contacted within 4 hours convert at 65.8%, while leads not reached until after 24 hours convert at only 15.8%, a 50 percentage-point difference that is the dominant driver of pipeline leakage."
       },
       {
         "rank": 2,
@@ -29,7 +29,7 @@
       {
         "rank": 3,
         "factor": "Missed follow-up",
-        "finding": "Leads with a missed follow-up flag convert at 18.8%, compared to 53.4% for leads with consistent follow-up — a 34.6 percentage-point gap that amplifies the impact of slow initial response."
+        "finding": "Leads with a missed follow-up flag convert at 18.8%, compared to 53.4% for leads with consistent follow-up, a 34.6 percentage-point gap that amplifies the impact of slow initial response."
       }
     ],
     "supportingComparison": "Leads contacted within SLA (65.8% conversion) outperform delayed leads (15.8% conversion) by 50 percentage points, making response speed the single strongest predictor of whether a lead reaches a booked meeting.",
@@ -37,7 +37,7 @@
   },
   "recommendation": {
     "firstAction": "The first change should be enforcing a 4-business-hour first-response SLA for all new leads and requiring a documented next step on every qualified lead before end of business day. Any lead with no recorded activity for 48 hours should automatically escalate to the pipeline manager for review.",
-    "whyThisFirst": "Delayed first response is responsible for a 50 percentage-point conversion gap — addressing it directly targets the largest single driver of pipeline leakage before any other factor.",
+    "whyThisFirst": "Delayed first response is responsible for a 50 percentage-point conversion gap. Addressing it directly targets the largest single driver of pipeline leakage before any other factor.",
     "expectedEffect": "Bringing median first-response time within SLA should materially improve conversion within 2 to 4 weeks, as leads that were previously going cold begin advancing to the Qualified and Meeting Scheduled stages.",
     "owner": "Pipeline manager, with weekly review of response-time compliance and stalled lead counts across all owners."
   },
@@ -45,12 +45,11 @@
     "title": "Lead Intake Follow-Up Standard",
     "objective": "Ensure every inbound lead receives timely, consistent follow-up so that qualified demand reaches a booked meeting without stalling.",
     "bullets": [
-      "All new leads must receive a first response within 4 business hours of intake.",
-      "Every qualified lead must have a logged next step before the end of the same business day.",
-      "Any lead with no recorded activity for 48 hours escalates automatically to the pipeline manager.",
-      "High-value leads (estimated deal value above $10,000) may not remain untouched for more than 1 business day.",
-      "Lead ownership must remain assigned and visible from intake through meeting scheduling — ownership gaps are not acceptable.",
-      "Missed follow-up flags must be reviewed weekly and addressed before they age past 72 hours."
+      "All new leads must receive a first response within 4 business hours of intake \u2014 set an automated CRM timer that flags overdue leads to the pipeline manager.",
+      "Every qualified lead must have a logged next-step task before end of the same business day \u2014 enforce this as a required field before a lead can move forward in stage.",
+      "Any lead with no recorded owner activity for 48 hours automatically escalates to the pipeline manager for reassignment or direct outreach.",
+      "High-value leads (deal value above $10,000) may not sit untouched for more than 1 business day \u2014 configure a separate high-priority queue with daily alerts.",
+      "Missed follow-up flags must be reviewed in the weekly pipeline meeting and resolved before they age past 72 hours \u2014 unresolved flags block owner performance reports."
     ],
     "escalation": "Any lead with no owner activity for 48 hours or any high-value lead untouched past 1 business day escalates immediately to the pipeline manager for reassignment or direct outreach.",
     "owner": "Pipeline manager, with support from individual sales and intake owners for day-to-day compliance."
@@ -64,10 +63,10 @@
     "responsePlan": "If median first-response time drifts above SLA for more than 2 days, the pipeline manager reviews the prior week's leads for the affected owners and schedules a direct coaching conversation. If conversion rate falls below 40% for two consecutive weeks, a full pipeline review is conducted to identify whether the issue is response speed, follow-up discipline, or lead quality. Persistent underperformance triggers reassignment of leads from low-converting owners."
   },
   "controlDashboard": {
-    "conversionRateLabel": "Conversion Rate: 44.2%",
-    "medianResponseLabel": "Median First Response: 9.6h (SLA: 4h)",
-    "stalledRateLabel": "Stalled Lead Rate: 25.8%",
-    "segmentNeedingAttention": "Jordan — 28% conversion rate on 25 leads assigned, likely driven by slow response and inconsistent follow-up. Immediate coaching and SLA review recommended."
+    "primaryMetricLabel": "Conversion Rate: 44.2% \u2192 target 55%",
+    "secondaryMetricLabel": "Median First Response: 9.6h (SLA: 4h)",
+    "tertiaryMetricLabel": "Stalled Lead Rate: 25.8% (threshold: 15%)",
+    "segmentNeedingAttention": "Jordan \u2014 28% conversion rate on 25 leads assigned, likely driven by slow response and inconsistent follow-up. Immediate coaching and SLA review recommended."
   },
   "alertRules": [
     {
@@ -94,6 +93,57 @@
       "trigger": "Missed follow-up rate exceeds 20% of active leads in the current week",
       "action": "Pipeline manager reviews open leads with missed follow-up flags and re-assigns or contacts within the same business day.",
       "severity": "warning"
+    }
+  ],
+  "measureBaseline": {
+    "currentStateMetrics": [
+      "Conversion rate: 44.2% (53 booked meetings from 120 leads)",
+      "Median first response: 9.6 hours against a 4-hour SLA",
+      "Stalled lead rate: 25.8% (31 leads with no forward movement)",
+      "Missed follow-up rate: 26.7% (32 leads with a missed follow-up flag)"
+    ],
+    "performanceGap": "Median first response is 9.6 hours \u2014 5.6 hours past the 4-hour SLA. Leads contacted within SLA convert at 65.8% vs 15.8% when delayed past 24 hours \u2014 a 50 percentage-point gap.",
+    "industryContext": "The B2B industry median first response to an inbound lead is 47 hours (Drift benchmark). Meridian's 9.6-hour median outperforms the industry but still misses its own 4-hour SLA. Leads contacted within 5 minutes are 21\u00d7 more likely to qualify (InsideSales/HBR). After 24 hours without contact, qualification rates drop roughly 75%.",
+    "priorityMetric": "Median time to first follow-up \u2014 bringing this below 4 hours is the single change most directly tied to the 50pp conversion gap.",
+    "benchmarkCategory": "B2B Professional Services"
+  },
+  "ownerBrief": {
+    "problem": "Your follow-up rules exist on paper but nothing in your CRM enforces them \u2014 so 1 in 4 leads quietly goes cold while it waits for someone to act.",
+    "moneyAtRisk": "$248k at risk",
+    "actions": [
+      {
+        "action": "Set a CRM automation rule that flags any lead untouched past 4 hours to the pipeline manager.",
+        "when": "this week",
+        "expectedLift": "Eliminate the 50pp conversion gap between on-time and late responses"
+      },
+      {
+        "action": "Make 'next step' a required CRM field before any lead can advance stages.",
+        "when": "this month",
+        "expectedLift": "Cut missed follow-up rate from 26.7% to below 10%"
+      },
+      {
+        "action": "Run a weekly routing review to rebalance leads away from Jordan toward higher-converting owners.",
+        "when": "this quarter",
+        "expectedLift": "Raise team conversion from 44.2% toward 55%+ within 90 days"
+      }
+    ],
+    "nextDecision": "Monday morning: log into your CRM and set a lead-aging alert for any open lead older than 4 hours with no logged activity \u2014 this takes 15 minutes and immediately surfaces every lead currently going cold."
+  },
+  "pipelineLog": [
+    {
+      "phase": "frame",
+      "label": "Define \u2014 Clarifying the problem and success criteria",
+      "summary": "The problem is not lead quality \u2014 it is that no one is forced to touch leads on time. The 4-hour SLA and 48-hour escalation rule exist on paper, but the CRM has no automation to make them happen."
+    },
+    {
+      "phase": "analyze",
+      "label": "Measure & Analyze \u2014 Quantifying current state and root causes",
+      "summary": "Leads contacted within SLA convert at 65.8%; leads contacted after 24 hours convert at 15.8% \u2014 a 50pp gap that is the single clearest operational lever available to this team right now."
+    },
+    {
+      "phase": "synthesize",
+      "label": "Improve & Control \u2014 Building recommendations and control system",
+      "summary": "Report generated."
     }
   ]
 }

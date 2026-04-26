@@ -157,7 +157,8 @@ RULES:
 - Use exact metric numbers from the DETERMINISTIC METRICS section above.
 - Do not invent metrics, percentages, or process details not present in the context.
 - Do not use "the AI", "the model", "DMAIC", "agentic", or "autonomous" in any value.
-- Keep every text value concise — business owners read fast.
+- Keep every text value concise. Business owners read fast.
+- Do not use em dashes (—) anywhere in your output. Use commas, periods, or colons instead.
 - Alert rule severities must be the string "warning" or "critical" only.
 `;
 }

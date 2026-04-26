@@ -1,10 +1,10 @@
-# Operator Agent
+# OpsAdvisor
 
-Operator Agent is a lean, hackathon-ready process-improvement app that helps a business owner diagnose where leads are leaking out of a customer acquisition workflow, identify the highest-impact operational fix, and leave behind controls to make the improvement stick.
+OpsAdvisor is a lean, hackathon-ready process-improvement app that helps a business owner diagnose where leads are leaking out of a customer acquisition workflow, identify the highest-impact operational fix, and leave behind controls to make the improvement stick.
 
 ## What it does
 
-For this MVP, Operator Agent focuses on a single workflow:
+For this MVP, OpsAdvisor focuses on a single workflow:
 
 **Lead Intake and Conversion Bottleneck**
 
@@ -29,7 +29,7 @@ Business owners often know leads are leaking somewhere in the pipeline, but they
 - what change would matter most
 - how to keep the fix from decaying
 
-Operator Agent is meant to compress that operational diagnosis-and-improvement work into one guided run.
+OpsAdvisor is meant to compress that operational diagnosis-and-improvement work into one guided run.
 
 ## MVP Scope
 
@@ -89,7 +89,7 @@ It is a focused end-to-end demo of operational reasoning, intervention design, a
 
 The demo should prove one thing clearly:
 
-Operator Agent can take a real revenue-adjacent workflow problem, identify the biggest source of leakage, recommend a credible operational fix, and leave behind controls a business can actually use.
+OpsAdvisor can take a real revenue-adjacent workflow problem, identify the biggest source of leakage, recommend a credible operational fix, and leave behind controls a business can actually use.
 
 ## Build Philosophy
 

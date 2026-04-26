@@ -1,32 +1,45 @@
 import { PhaseCard } from "./PhaseCard";
 
-const ORDERED_SECTIONS: Array<{
+type DmaicSection = {
+  phase: string;
   title: string;
   eyebrow: string;
   variant?: "summary" | "default";
-}> = [
-  { title: "Executive Summary", eyebrow: "Headline", variant: "summary" },
-  { title: "Problem Definition", eyebrow: "Define" },
-  { title: "Baseline Performance", eyebrow: "Measure" },
-  { title: "Root-Cause Analysis", eyebrow: "Analyze" },
-  { title: "Recommended Fix", eyebrow: "Improve" },
-  { title: "Workflow Rule / SOP Update", eyebrow: "Improve" },
-  { title: "Control Dashboard", eyebrow: "Control" },
-  { title: "Alert Logic", eyebrow: "Control" },
-  { title: "Monitoring Report", eyebrow: "Control" },
+};
+
+const DMAIC_SECTIONS: DmaicSection[] = [
+  { phase: "",        title: "Executive Summary",    eyebrow: "TL;DR",                       variant: "summary" },
+  { phase: "Define",  title: "Problem Definition",   eyebrow: "Workflow & Scope" },
+  { phase: "Measure", title: "Current State & KPIs", eyebrow: "KPIs & Benchmarks" },
+  { phase: "Analyze", title: "Root-Cause Analysis",  eyebrow: "Causes & Mechanisms" },
+  { phase: "Improve", title: "Improvement Plan",     eyebrow: "Action & SOP" },
+  { phase: "Control", title: "Control System",       eyebrow: "Metrics, Alerts, Monitoring" },
 ];
+
+function DmaicHeader({ phase }: { phase: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-4">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-accent">{phase}</span>
+      <div className="h-px flex-1 bg-accent/25" />
+    </div>
+  );
+}
 
 export function PlaceholderResults() {
   return (
     <div className="flex flex-col gap-5">
-      {ORDERED_SECTIONS.map((section, i) => (
-        <PhaseCard
-          key={section.title}
-          index={i + 1}
-          title={section.title}
-          eyebrow={section.eyebrow}
-          variant={section.variant}
-        />
+      {DMAIC_SECTIONS.map((section, i) => (
+        <div key={section.title}>
+          {section.phase && <DmaicHeader phase={section.phase} />}
+          <div className={section.phase ? "mt-3" : ""}>
+            <PhaseCard
+              index={i}
+              title={section.title}
+              eyebrow={section.eyebrow}
+              variant={section.variant}
+            />
+          </div>
+        </div>
       ))}
     </div>
   );

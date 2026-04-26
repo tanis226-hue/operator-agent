@@ -33,7 +33,6 @@ function ensureApiKey(): void {
 function hasApiKey(): boolean {
   ensureApiKey();
   const k = (process.env.ANTHROPIC_API_KEY ?? "").trim();
-  console.log("[run-analysis] KEY length:", k.length, "| starts:", k.slice(0, 15));
   return k.length > 0 && k !== "your_key_here";
 }
 

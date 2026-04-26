@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Operator Agent",
+  title: "OpsAdvisor",
   description:
     "Diagnose where leads are leaking, fix the biggest operational breakdown, and put controls in place.",
 };

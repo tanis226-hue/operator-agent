@@ -50,9 +50,11 @@ export function PhaseCard({
             {title}
           </h3>
         </div>
-        <span className="shrink-0 rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold tabular-nums text-ink-muted">
-          {String(index).padStart(2, "0")}
-        </span>
+        {!isSummary && (
+          <span className="shrink-0 rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold tabular-nums text-ink-muted">
+            {String(index).padStart(2, "0")}
+          </span>
+        )}
       </div>
 
       {/* Card body */}

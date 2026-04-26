@@ -15,6 +15,18 @@ export type FrameOutput = {
   bottomLine: string;
 };
 
+export type MeasureOutput = {
+  metric1: string;
+  metric2: string;
+  metric3: string;
+  performanceGap: string;
+  industryContext: string;
+  priorityMetric: string;
+  benchmarkCategory: string;
+  benchmarkSummary: string;
+  baseline: string;
+};
+
 export type AnalyzeOutput = {
   rootCauses: Array<{
     factor: string;
@@ -227,9 +239,10 @@ TASK: Generate the full user-facing report as a RevOps expert who has diagnosed 
 
 RULES:
 - Use exact metric numbers from KEY METRICS above. Reference the industry benchmarks you carry (47h median, 5-min 21x lift, 24h 75% decay) to contextualize findings.
-- SOP bullets must be exactly 5 strings. Each must describe a specific operational control — CRM automation triggers, SLA timer fields, assignment rules, escalation conditions, or after-hours coverage protocols. No generic guidance.
-- alertRules must be exactly 5 objects, each with severity "warning" or "critical" only. Each must be a specific RevOps monitoring rule referencing lead aging thresholds, SLA violations, stall rate spikes, or routing queue imbalance — specific enough to configure in a CRM or ops dashboard.
+- SOP bullets must be exactly 5 strings. Each must describe a specific operational control: CRM automation triggers, SLA timer fields, assignment rules, escalation conditions, or after-hours coverage protocols. No generic guidance.
+- alertRules must be exactly 5 objects, each with severity "warning" or "critical" only. Each must be a specific RevOps monitoring rule referencing lead aging thresholds, SLA violations, stall rate spikes, or routing queue imbalance, specific enough to configure in a CRM or ops dashboard.
 - Do not use "AI", "DMAIC", "agentic", or academic jargon.
+- Do not use em dashes (—) anywhere in your output. Use commas, periods, or colons instead.
 - Recommendations must name specific system-level changes where relevant (CRM task automation, lead aging reports, auto-reassignment after inactivity threshold, round-robin rebalancing).
 
 Output a JSON object matching this EXACT schema:
@@ -297,7 +310,17 @@ Output a JSON object matching this EXACT schema:
     { "trigger": "specific condition", "action": "what should happen", "severity": "warning" },
     { "trigger": "specific condition", "action": "what should happen", "severity": "critical" },
     { "trigger": "specific condition", "action": "what should happen", "severity": "warning" }
-  ]
+  ],
+  "ownerBrief": {
+    "problem": "1 sentence — the core operational failure in plain English that a non-technical owner can act on. No DMAIC, no jargon.",
+    "moneyAtRisk": "Short dollar figure only — e.g. '$286k at risk' or '$180k in stalled pipeline'. Maximum 8 words. Do not write a sentence or paragraph.";
+    "actions": [
+      { "action": "Most urgent change — active verb, names specific CRM field, rule, or role. No more than 15 words.", "when": "this week", "expectedLift": "Specific measurable outcome, e.g. '+8pp conversion' or 'Eliminate 40% of stalls'" },
+      { "action": "Second priority change — can involve a process adjustment or reporting change.", "when": "this month", "expectedLift": "Specific measurable outcome" },
+      { "action": "Longer-term structural fix — routing, coverage, or CRM automation improvement.", "when": "this quarter", "expectedLift": "Specific measurable outcome" }
+    ],
+    "nextDecision": "1 sentence. The single most concrete thing to do Monday morning. Names the specific tool, person, meeting, or CRM field — not a vague directive."
+  }
 }`;
 }
 

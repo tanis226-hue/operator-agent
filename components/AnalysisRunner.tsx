@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { IntakeBriefCard } from "./IntakeBriefCard";
 import { IntakeBriefEditor } from "./IntakeBriefEditor";
 import { AnalysisResults } from "./AnalysisResults";
@@ -30,9 +30,9 @@ type AnalysisResponse = {
 };
 
 const PIPELINE_PHASES: PhaseState[] = [
-  { phase: "frame",     label: "Framing the problem and reviewing pipeline data", status: "pending" },
-  { phase: "analyze",   label: "Analyzing root causes and causal chains",          status: "pending" },
-  { phase: "synthesize",label: "Building recommendations and control plan",         status: "pending" },
+  { phase: "frame",      label: "Define: Clarifying the problem and success criteria",           status: "pending" },
+  { phase: "analyze",    label: "Measure & Analyze: Quantifying current state and root causes",  status: "pending" },
+  { phase: "synthesize", label: "Improve & Control: Building recommendations and controls",      status: "pending" },
 ];
 
 const EMPTY_BRIEF: IntakeBrief = {
@@ -46,9 +46,13 @@ type Props = {
   externalBrief?: IntakeBrief;
   externalNote?: string;
   onRestart?: () => void;
+  onAnalyzeOwn?: () => void;
+  instantDemo?: boolean;
 };
 
-export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }: Props) {
+const ANALYSIS_SESSION_KEY = "oa_analysis";
+
+export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, onAnalyzeOwn, instantDemo }: Props) {
   const [state, setState]           = useState<RunState>("idle");
   const [phases, setPhases]         = useState<PhaseState[]>(PIPELINE_PHASES);
   const [result, setResult]         = useState<AnalysisResponse | null>(null);
@@ -59,14 +63,139 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
   const [totalDurationMs, setTotalDurationMs] = useState<number | null>(null);
   const [copied, setCopied]         = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
 
   const [mode, setMode]             = useState<CaseMode>(externalBrief ? "custom" : "demo");
   const [customBrief, setCustomBrief] = useState<IntakeBrief>(externalBrief ?? EMPTY_BRIEF);
   const [customNote, setCustomNote] = useState(externalNote ?? "");
 
+  // Auto-load instant demo result on mount (bypasses API call entirely)
+  useEffect(() => {
+    if (!instantDemo) return;
+    // Skip if a result is already cached in sessionStorage
+    try {
+      const cached = sessionStorage.getItem(ANALYSIS_SESSION_KEY);
+      if (cached) return;
+    } catch { /* ignore */ }
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/demo-result");
+        if (!res.ok) return;
+        const data = await res.json() as {
+          generated: GeneratedOutputPayload;
+          analysis: PipelineAnalysis;
+          pipelineLog: PipelineLog;
+          usedFallback: boolean;
+        };
+        const donePhases = PIPELINE_PHASES.map((p, i) => ({
+          ...p,
+          status: "done" as const,
+          summary: (data.pipelineLog[i]?.summary) ?? "",
+        }));
+        setPhases(donePhases);
+        setResult({
+          analysis: data.analysis,
+          generated: data.generated,
+          pipelineLog: data.pipelineLog,
+          usedFallback: true,
+        });
+        setCompletedAt(new Date().toLocaleTimeString());
+        setState("done");
+      } catch { /* fallback silently — user can still click Run Analysis */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instantDemo]);
+
+  // Restore completed result from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(ANALYSIS_SESSION_KEY);
+      if (!saved) {
+        // No cached result — if demo tab is active, auto-fetch pre-generated demo result
+        // (instantDemo path fetches its own fresh result via the effect above)
+        if (!instantDemo && mode === "demo") {
+          void (async () => {
+            try {
+              const res = await fetch("/api/demo-result");
+              if (!res.ok) return;
+              const data = await res.json() as {
+                generated: GeneratedOutputPayload;
+                analysis: PipelineAnalysis;
+                pipelineLog: PipelineLog;
+                usedFallback: boolean;
+              };
+              const donePhases = PIPELINE_PHASES.map((p, i) => ({
+                ...p,
+                status: "done" as const,
+                summary: (data.pipelineLog[i]?.summary) ?? "",
+              }));
+              setPhases(donePhases);
+              setResult({
+                analysis: data.analysis,
+                generated: data.generated,
+                pipelineLog: data.pipelineLog,
+                usedFallback: true,
+              });
+              setCompletedAt(new Date().toLocaleTimeString());
+              setState("done");
+            } catch { /* silently fail — user can still click Run Analysis */ }
+          })();
+        }
+        return;
+      }
+      const s = JSON.parse(saved) as {
+        result: AnalysisResponse;
+        completedAt: string;
+        totalDurationMs: number;
+        mode: CaseMode;
+        customBrief: IntakeBrief;
+        customNote: string;
+        phases: PhaseState[];
+      };
+      if (s.result) {
+        setResult(s.result);
+        setState("done");
+        setCompletedAt(s.completedAt ?? "");
+        setTotalDurationMs(s.totalDurationMs ?? null);
+        setMode(s.mode ?? (externalBrief ? "custom" : "demo"));
+        if (s.customBrief) setCustomBrief(s.customBrief);
+        if (s.customNote !== undefined) setCustomNote(s.customNote);
+        if (s.phases) setPhases(s.phases);
+      }
+    } catch { /* ignore corrupt storage */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist to sessionStorage whenever a result is completed
+  useEffect(() => {
+    if (state !== "done" || !result) return;
+    try {
+      sessionStorage.setItem(ANALYSIS_SESSION_KEY, JSON.stringify({
+        result, completedAt, totalDurationMs, mode, customBrief, customNote, phases,
+      }));
+    } catch { /* storage full */ }
+  }, [state, result, completedAt, totalDurationMs, mode, customBrief, customNote, phases]);
+
   const isRunning  = state === "running";
   const isDone     = state === "done";
   const activeBrief = mode === "demo" ? brief : customBrief;
+
+  // Get contextual button message based on active phase
+  function getRunningMessage(): string {
+    const activePhase = phases.find((p) => p.status === "running");
+    if (!activePhase) return "Running…";
+    switch (activePhase.phase) {
+      case "frame":
+        return "Framing the problem…";
+      case "analyze":
+        return "Analyzing root causes…";
+      case "synthesize":
+        return "Building recommendations…";
+      default:
+        return "Running…";
+    }
+  }
 
   async function handleRunAnalysis() {
     if (isRunning) return;
@@ -91,6 +220,7 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
     setResult(null);
     setErrorMsg("");
     setBriefOpen(false);
+    try { sessionStorage.removeItem(ANALYSIS_SESSION_KEY); } catch { /* ignore */ }
 
     try {
       const init: RequestInit = { method: "POST" };
@@ -172,20 +302,296 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
 
   async function handleCopyReport() {
     if (!result) return;
-    const md = buildMarkdownReport(activeBrief, result.generated, result.analysis);
-    await navigator.clipboard.writeText(md);
+    const text = buildPlainTextReport(activeBrief, result.generated, result.analysis);
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleDownloadReport() {
+  type ReportFormat = "docx" | "pdf" | "txt";
+
+  async function handleSaveReport(format: ReportFormat) {
     if (!result) return;
-    const md = buildMarkdownReport(activeBrief, result.generated, result.analysis);
-    const blob = new Blob([md], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
+    setSaveMenuOpen(false);
+
+    const filename = activeBrief.workflowName.toLowerCase().replace(/\s+/g, "-") || "analysis";
+
+    if (format === "txt") {
+      const text = buildPlainTextReport(activeBrief, result.generated, result.analysis);
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filename}-analysis.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2000);
+      return;
+    }
+
+    if (format === "pdf") {
+      const html = buildPrintableHtmlReport(activeBrief, result.generated, result.analysis);
+      const win = window.open("", "_blank", "width=900,height=1200");
+      if (!win) {
+        alert("Pop-up blocked. Please allow pop-ups to export PDF.");
+        return;
+      }
+      win.document.write(html);
+      win.document.close();
+      // Give the new window time to render before triggering print
+      setTimeout(() => {
+        win.focus();
+        win.print();
+      }, 300);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2000);
+      return;
+    }
+
+    // format === "docx"
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, PageBreak } = await import("docx");
+    const g = result.generated;
+    const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    function heading(text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) {
+      return new Paragraph({ text, heading: level, spacing: { before: 300, after: 100 } });
+    }
+    /** Page-break + heading combo — used at the start of each DMAIC section */
+    function sectionHeading(letter: string, title: string) {
+      return new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 0, after: 200 },
+        children: [
+          new PageBreak(),
+          new TextRun({ text: `${letter}  `, bold: true, size: 36, color: "C45C2E" }),
+          new TextRun({ text: title, bold: true, size: 32 }),
+        ],
+      });
+    }
+    function body(text: string) {
+      return new Paragraph({ children: [new TextRun({ text, size: 22 })], spacing: { after: 120 } });
+    }
+    function labeledPara(label: string, text: string) {
+      return new Paragraph({
+        children: [
+          new TextRun({ text: `${label}: `, bold: true, size: 22 }),
+          new TextRun({ text, size: 22 }),
+        ],
+        spacing: { after: 100 },
+      });
+    }
+    function bullet(text: string) {
+      return new Paragraph({
+        children: [new TextRun({ text, size: 22 })],
+        bullet: { level: 0 },
+        spacing: { after: 80 },
+      });
+    }
+    function divider() {
+      return new Paragraph({
+        border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" } },
+        spacing: { before: 200, after: 200 },
+      });
+    }
+
+    const children = [
+      // ─── Cover page ───
+      new Paragraph({
+        children: [new TextRun({ text: " ", size: 22 })],
+        spacing: { before: 1800 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: "DMAIC PROCESS ANALYSIS", bold: true, size: 22, color: "C45C2E" })],
+        spacing: { after: 200 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: activeBrief.workflowName, bold: true, size: 56 })],
+        spacing: { after: 200 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: activeBrief.businessName || "Custom case", size: 28, color: "555555" })],
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: date, size: 22, color: "888888" })],
+        spacing: { after: 600 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: "Generated by OpsAdvisor · Claude Opus 4.7", size: 16, color: "AAAAAA" })],
+      }),
+
+      // ─── Executive Summary (page 2) ───
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 0, after: 200 },
+        children: [
+          new PageBreak(),
+          new TextRun({ text: "Executive Summary", bold: true, size: 32 }),
+        ],
+      }),
+      body(g.executiveSummary.headlineFinding),
+      labeledPara("Business impact", g.executiveSummary.whyItMatters),
+      labeledPara("Primary cause", g.executiveSummary.primaryCause),
+      labeledPara("First action", g.executiveSummary.recommendedAction),
+      labeledPara("Monitoring", g.executiveSummary.monitoringPlan),
+
+      // ─── DEFINE ───
+      sectionHeading("D", "Define: Problem Definition"),
+      labeledPara("Workflow", g.problemDefinition.workflow),
+      labeledPara("Business problem", g.problemDefinition.businessProblem),
+      labeledPara("Affected group", g.problemDefinition.affectedGroup),
+      labeledPara("Success metric", g.problemDefinition.successMetric),
+      labeledPara("Scope", g.problemDefinition.scope),
+
+      // ─── MEASURE ───
+      sectionHeading("M", "Measure: Current State & KPIs"),
+      
+      // Render metric cards from analysis if available
+      ...(result.analysis ? [
+        new Paragraph({
+          children: [new TextRun({ text: "Baseline Metrics", bold: true, size: 24 })],
+          spacing: { before: 0, after: 150 },
+        }),
+        labeledPara("Conversion rate", `${result.analysis.conversionRate}% (new lead → booked meeting)`),
+        labeledPara("Median first response", `${result.analysis.medianFirstResponseHours.toFixed(1)} hours (SLA: 4h)`),
+        labeledPara("Stalled lead rate", `${result.analysis.stalledLeadRate}% (${result.analysis.stalledLeads} leads)`),
+        labeledPara("Missed follow-up rate", `${result.analysis.missedFollowupRate}%`),
+        labeledPara("Avg deal value", `$${result.analysis.avgDealValue.toLocaleString()} per lead`),
+        labeledPara("Total leads analyzed", `${result.analysis.totalLeads} (${result.analysis.bookedMeetings} booked, ${result.analysis.stalledLeads} stalled, ${result.analysis.lostLeads} lost)`),
+        
+        // Stage breakdown
+        new Paragraph({
+          children: [new TextRun({ text: "Leads by Stage", bold: true, size: 22 })],
+          spacing: { before: 200, after: 100 },
+        }),
+        ...result.analysis.stageDropoff.map((s) =>
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${s.stage}: `, bold: true, size: 20 }),
+              new TextRun({ text: `${s.count} leads (${(s.percentOfTotal * 100).toFixed(1)}%)`, size: 20 }),
+            ],
+            spacing: { after: 60 },
+            bullet: { level: 0 },
+          })
+        ),
+
+        // Source breakdown
+        ...(result.analysis.bySource.length > 1 ? [
+          new Paragraph({
+            children: [new TextRun({ text: "Conversion by Lead Source", bold: true, size: 22 })],
+            spacing: { before: 200, after: 100 },
+          }),
+          ...result.analysis.bySource.map((s) =>
+            new Paragraph({
+              children: [
+                new TextRun({ text: `${s.label}: `, bold: true, size: 20 }),
+                new TextRun({ text: `${s.conversionRate}% (${s.total} leads, ${s.booked} booked)`, size: 20 }),
+              ],
+              spacing: { after: 60 },
+              bullet: { level: 0 },
+            })
+          ),
+        ] : []),
+      ] : []),
+
+      // Render baseline text and benchmarks
+      ...(g.measureBaseline?.currentStateMetrics ?? []).map(bullet),
+      ...(g.measureBaseline ? [
+        labeledPara("Performance gap", g.measureBaseline.performanceGap),
+        labeledPara("Industry context", g.measureBaseline.industryContext),
+        labeledPara("Priority metric", g.measureBaseline.priorityMetric),
+      ] : []),
+      ...(g.measureBaseline?.benchmarkSources && g.measureBaseline.benchmarkSources.length > 0 ? [
+        new Paragraph({
+          children: [new TextRun({ text: `Benchmark sources${g.measureBaseline.benchmarkCategory ? `: ${g.measureBaseline.benchmarkCategory}` : ""}`, bold: true, size: 22 })],
+          spacing: { before: 200, after: 100 },
+        }),
+        ...g.measureBaseline.benchmarkSources.map((b) =>
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${b.metric}: `, size: 20 }),
+              new TextRun({ text: b.figure, bold: true, size: 20 }),
+              new TextRun({ text: `. ${b.source} (${b.year}). `, size: 20, color: "666666" }),
+              new TextRun({ text: b.url, size: 18, color: "0066CC" }),
+            ],
+            spacing: { after: 80 },
+            bullet: { level: 0 },
+          })
+        ),
+      ] : []),
+
+      // ─── ANALYZE ───
+      sectionHeading("A", "Analyze: Root-Cause Analysis"),
+      body(g.rootCauseAnalysis.topLeakagePoint),
+      ...g.rootCauseAnalysis.rankedCauses.map((c) =>
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${c.rank}. ${c.factor}: `, bold: true, size: 22 }),
+            new TextRun({ text: c.finding, size: 22 }),
+          ],
+          spacing: { after: 100 },
+        })
+      ),
+      labeledPara("Key comparison", g.rootCauseAnalysis.supportingComparison),
+      labeledPara("Segment insight", g.rootCauseAnalysis.segmentInsight),
+
+      // ─── IMPROVE ───
+      sectionHeading("I", "Improve: Recommendation & SOP"),
+      body(g.recommendation.firstAction),
+      labeledPara("Why this first", g.recommendation.whyThisFirst),
+      labeledPara("Expected result", g.recommendation.expectedEffect),
+      labeledPara("Owner", g.recommendation.owner),
+      new Paragraph({
+        children: [new TextRun({ text: `SOP: ${g.workflowSOP.title}`, bold: true, size: 22 })],
+        spacing: { before: 200, after: 60 },
+      }),
+      new Paragraph({ children: [new TextRun({ text: g.workflowSOP.objective, italics: true, size: 22 })], spacing: { after: 120 } }),
+      ...g.workflowSOP.bullets.map(bullet),
+      labeledPara("Escalation", g.workflowSOP.escalation),
+
+      // ─── CONTROL ───
+      sectionHeading("C", "Control: Metrics, Alerts, Monitoring"),
+      labeledPara("Primary KPI", g.controlDashboard.primaryMetricLabel),
+      labeledPara("Secondary KPI", g.controlDashboard.secondaryMetricLabel),
+      labeledPara("Tertiary KPI", g.controlDashboard.tertiaryMetricLabel),
+      labeledPara("Watch closely", g.controlDashboard.segmentNeedingAttention),
+      new Paragraph({
+        children: [new TextRun({ text: "Alert & escalation rules", bold: true, size: 22 })],
+        spacing: { before: 200, after: 100 },
+      }),
+      ...g.alertRules.map((r) =>
+        new Paragraph({
+          children: [
+            new TextRun({ text: `[${r.severity.toUpperCase()}] `, bold: true, size: 22, color: r.severity === "critical" ? "CC0000" : "CC6600" }),
+            new TextRun({ text: `${r.trigger} → ${r.action}`, size: 22 }),
+          ],
+          spacing: { after: 100 },
+        })
+      ),
+      new Paragraph({
+        children: [new TextRun({ text: "Ongoing monitoring", bold: true, size: 22 })],
+        spacing: { before: 200, after: 100 },
+      }),
+      labeledPara("Owner", g.monitoringReport.owner),
+      labeledPara("Metrics", g.monitoringReport.metrics),
+      labeledPara("Thresholds", g.monitoringReport.thresholds),
+      labeledPara("If metrics drift", g.monitoringReport.responsePlan),
+
+      new Paragraph({ children: [new TextRun({ text: `Generated by OpsAdvisor · Claude Opus 4.7 · ${date}`, size: 16, color: "AAAAAA" })], spacing: { before: 400 }, alignment: AlignmentType.CENTER }),
+    ];
+
+    const doc = new Document({ sections: [{ children }] });
+    const buffer = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(buffer);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `analysis-${activeBrief.workflowName.toLowerCase().replace(/\s+/g, "-")}.md`;
+    a.download = `${filename}-analysis.docx`;
     a.click();
     URL.revokeObjectURL(url);
     setDownloaded(true);
@@ -196,45 +602,92 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
     if (isRunning) return;
     setMode(next);
     setErrorMsg("");
-    setState("idle");
-    setBriefOpen(true);
+
+    if (next === "demo") {
+      // Auto-load pre-generated demo result, same as instantDemo path
+      setBriefOpen(false);
+      setState("idle");
+      setResult(null);
+      try { sessionStorage.removeItem(ANALYSIS_SESSION_KEY); } catch { /* ignore */ }
+      void (async () => {
+        try {
+          const res = await fetch("/api/demo-result");
+          if (!res.ok) { setState("idle"); setBriefOpen(true); return; }
+          const data = await res.json() as {
+            generated: GeneratedOutputPayload;
+            analysis: PipelineAnalysis;
+            pipelineLog: PipelineLog;
+            usedFallback: boolean;
+          };
+          const donePhases = PIPELINE_PHASES.map((p, i) => ({
+            ...p,
+            status: "done" as const,
+            summary: (data.pipelineLog[i]?.summary) ?? "",
+          }));
+          setPhases(donePhases);
+          setResult({
+            analysis: data.analysis,
+            generated: data.generated,
+            pipelineLog: data.pipelineLog,
+            usedFallback: true,
+          });
+          setCompletedAt(new Date().toLocaleTimeString());
+          setState("done");
+        } catch { setState("idle"); setBriefOpen(true); }
+      })();
+    } else {
+      setState("idle");
+      setBriefOpen(true);
+    }
   }
 
   return (
     <>
-      {/* Case-source toggle */}
-      <CaseModeToggle
-        mode={mode}
-        onChange={handleModeChange}
-        disabled={isRunning}
-        onCopyFromDemo={() => setCustomBrief(brief)}
-        showCopyFromDemo={mode === "custom"}
-      />
+      {/* Case-source toggle — hidden in instant demo mode (pre-generated) to reduce chrome */}
+      {!(instantDemo && result?.usedFallback) && (
+        <CaseModeToggle
+          mode={mode}
+          onChange={handleModeChange}
+          disabled={isRunning}
+          onCopyFromDemo={() => setCustomBrief(brief)}
+          showCopyFromDemo={mode === "custom"}
+        />
+      )}
 
-      {/* Intake brief */}
-      {briefOpen ? (
-        mode === "demo"
-          ? <IntakeBriefCard brief={brief} />
-          : <IntakeBriefEditor
-              brief={customBrief}
-              processNote={customNote}
-              onBriefChange={setCustomBrief}
-              onProcessNoteChange={setCustomNote}
-              disabled={isRunning}
-            />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setBriefOpen(true)}
-          className="flex w-full items-center justify-between rounded-card border border-line bg-surface px-6 py-3 text-sm shadow-card transition hover:bg-canvas"
-        >
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-ink">{activeBrief.businessName || "Custom case"}</span>
-            <span className="text-ink-muted">·</span>
-            <span className="text-ink-soft">{activeBrief.workflowName || "—"}</span>
-          </div>
-          <span className="text-xs text-ink-muted">Show intake brief ↓</span>
-        </button>
+      {/* Demo context — grounding one-liner shown when instant demo is active */}
+      {instantDemo && mode === "demo" && (
+        <p className="text-[13px] text-ink-muted">
+          <span className="font-medium text-ink">Demo case</span>
+          {": Meridian Professional Services, a professional services team with 120 inbound leads and an inconsistent follow-up problem."}
+        </p>
+      )}
+
+      {/* Intake brief — hidden in instant demo (pre-generated) until user explicitly opens it */}
+      {!(instantDemo && result?.usedFallback && !briefOpen) && (
+        briefOpen ? (
+          mode === "demo"
+            ? <IntakeBriefCard brief={brief} />
+            : <IntakeBriefEditor
+                brief={customBrief}
+                processNote={customNote}
+                onBriefChange={setCustomBrief}
+                onProcessNoteChange={setCustomNote}
+                disabled={isRunning}
+              />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setBriefOpen(true)}
+            className="flex w-full items-center justify-between rounded-card border border-line bg-surface px-6 py-3 text-sm shadow-card transition hover:bg-canvas"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-ink">{activeBrief.businessName || "Custom case"}</span>
+              <span className="text-ink-muted">·</span>
+              <span className="text-ink-soft">{activeBrief.workflowName || "-"}</span>
+            </div>
+            <span className="text-xs font-medium text-accent">Show intake brief ↓</span>
+          </button>
+        )
       )}
 
       {/* Run Analysis */}
@@ -247,8 +700,10 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
             <h2 id="run-heading" className="text-base font-semibold text-ink">Run analysis</h2>
             <p className="mt-1 text-sm text-ink-soft">
               {mode === "demo"
-                ? "Uses the intake brief, local pipeline data, and process note."
-                : "Uses your intake brief and context with local pipeline data."}
+                ? result?.usedFallback
+                  ? "Showing a pre-generated result. Click \"Re-run live\" for a fresh AI analysis."
+                  : "Runs the demo intake brief against the included pipeline dataset and process note."
+                : "Runs your intake brief, uploaded files, and any database query results through the DMAIC pipeline."}
             </p>
           </div>
 
@@ -265,16 +720,25 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
             )}
             {state === "error" && (
               <span className="text-xs font-medium text-red-500">
-                {errorMsg && errorMsg.length < 80 ? errorMsg : "Failed — see details below"}
+                {errorMsg && errorMsg.length < 80 ? errorMsg : "Failed. See details below"}
               </span>
             )}
-            {onRestart && !isRunning && (
+            {!isRunning && !briefOpen && isDone && !result?.usedFallback && (
+              <button
+                type="button"
+                onClick={() => setBriefOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink-muted transition hover:text-ink"
+              >
+                Edit brief
+              </button>
+            )}
+            {onRestart && !isRunning && isDone && !result?.usedFallback && (
               <button
                 type="button"
                 onClick={onRestart}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink-muted transition hover:text-ink"
               >
-                ← Edit
+                ← New analysis
               </button>
             )}
             {isDone && (
@@ -286,13 +750,12 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
                 >
                   {copied ? "Copied!" : "Copy report"}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadReport}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
-                >
-                  {downloaded ? "Saved!" : "Save .md"}
-                </button>
+                <SaveReportMenu
+                  open={saveMenuOpen}
+                  onOpenChange={setSaveMenuOpen}
+                  onSelect={handleSaveReport}
+                  saved={downloaded}
+                />
               </>
             )}
             <button
@@ -301,26 +764,37 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
               disabled={isRunning}
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-semibold text-white shadow-btn transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isRunning ? "Running…" : isDone ? "Re-run" : "Run Analysis"}
+              {isRunning ? getRunningMessage() : isDone ? (result?.usedFallback ? "Re-run live" : "Re-run") : "Run Analysis"}
             </button>
           </div>
         </div>
 
-        {/* Phase progress */}
-        {(isRunning || isDone) && (
+        {/* Phase progress — hidden in instant demo pre-generated state */}
+        {(isRunning || isDone) && !(instantDemo && result?.usedFallback) && (
           <div className="border-t border-line px-6 py-4">
-            <ol className="flex flex-col gap-3">
-              {phases.map((p) => <PhaseRow key={p.phase} phase={p} />)}
-            </ol>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {/* Phases: takes up 2 columns on desktop, full width on mobile */}
+              <div className="md:col-span-2">
+                <ol className="flex flex-col gap-3">
+                  {phases.map((p) => <PhaseRow key={p.phase} phase={p} />)}
+                </ol>
+              </div>
+              {/* Sidebar: shows what we're analyzing */}
+              {isRunning && (
+                <div className="md:col-span-1">
+                  <AnalysisContextSidebar brief={activeBrief} isRunning={isRunning} />
+                </div>
+              )}
+            </div>
 
             {/* Run summary — shown after completion */}
             {isDone && totalDurationMs !== null && (
-              <div className="mt-4 flex items-center gap-4 rounded-lg border border-line bg-canvas px-4 py-2.5">
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-canvas px-4 py-2.5">
                 <StatPill label="Opus 4.7 calls" value="3" />
-                <div className="h-3 w-px bg-line" />
+                <div className="hidden h-3 w-px bg-line sm:block" />
                 <StatPill label="Total duration" value={formatDuration(totalDurationMs)} />
-                <div className="h-3 w-px bg-line" />
-                <StatPill label="Phases" value="Frame · Analyze · Synthesize" />
+                <div className="hidden h-3 w-px bg-line sm:block" />
+                <StatPill label="Phases" value="Define · Measure & Analyze · Improve & Control" />
               </div>
             )}
           </div>
@@ -343,21 +817,13 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
       </div>
 
       {isDone && result ? (
-        <>
-          <AnalysisResults analysis={result.analysis} generated={result.generated} />
-          {onRestart && (
-            <div className="flex items-center justify-center gap-4 rounded-card border border-line bg-surface px-6 py-5 shadow-card">
-              <p className="text-[13px] text-ink-soft">Want to analyze a different workflow?</p>
-              <button
-                type="button"
-                onClick={onRestart}
-                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-semibold text-white shadow-btn transition hover:bg-accent-hover"
-              >
-                Start new analysis →
-              </button>
-            </div>
-          )}
-        </>
+        <AnalysisResults
+          analysis={result.analysis}
+          generated={result.generated}
+          brief={activeBrief}
+          mode={mode}
+          onAnalyzeOwn={onAnalyzeOwn}
+        />
       ) : (
         <PlaceholderResults />
       )}
@@ -366,6 +832,55 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function AnalysisContextSidebar({ brief, isRunning }: { brief: IntakeBrief; isRunning: boolean }) {
+  return (
+    <div className="animate-slide-in-right rounded-lg border border-line bg-canvas px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-3">
+        What we're analyzing
+      </div>
+      <div className="flex flex-col gap-2.5 text-[12px]">
+        {brief.businessName && (
+          <div>
+            <div className="font-medium text-ink-muted mb-0.5">Business</div>
+            <div className="text-ink">{brief.businessName}</div>
+          </div>
+        )}
+        {brief.workflowName && (
+          <div>
+            <div className="font-medium text-ink-muted mb-0.5">Workflow</div>
+            <div className="text-ink">{brief.workflowName}</div>
+          </div>
+        )}
+        {brief.painPoint && (
+          <div>
+            <div className="font-medium text-ink-muted mb-0.5">Pain point</div>
+            <div className="text-ink line-clamp-2">{brief.painPoint}</div>
+          </div>
+        )}
+        {brief.currentStages && brief.currentStages.length > 0 && (
+          <div>
+            <div className="font-medium text-ink-muted mb-1">Pipeline stages</div>
+            <div className="flex flex-wrap gap-1">
+              {brief.currentStages.map((stage, i) => (
+                <span key={i} className="rounded bg-surface px-2 py-0.5 text-[11px] text-ink-soft">
+                  {stage}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {isRunning && (
+          <div className="mt-1 pt-2.5 border-t border-line">
+            <div className="text-[10px] text-ink-soft italic">
+              Analyzing workflow patterns, timing, and bottlenecks across your data…
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function StatPill({ label, value }: { label: string; value: string }) {
   return (
@@ -388,10 +903,10 @@ function CaseModeToggle({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-card">
       <div className="flex items-center gap-3">
-        <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Case</span>
-        <div role="tablist" aria-label="Case mode" className="inline-flex rounded-md border border-line bg-canvas p-0.5">
-          <ToggleTab active={mode === "demo"}   onClick={() => onChange("demo")}   disabled={disabled}>Demo</ToggleTab>
-          <ToggleTab active={mode === "custom"} onClick={() => onChange("custom")} disabled={disabled}>My own case</ToggleTab>
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Source</span>
+        <div role="tablist" aria-label="Analysis source" className="inline-flex rounded-md border border-line bg-canvas p-0.5">
+          <ToggleTab active={mode === "demo"}   onClick={() => onChange("demo")}   disabled={disabled}>Demo case</ToggleTab>
+          <ToggleTab active={mode === "custom"} onClick={() => onChange("custom")} disabled={disabled}>My workflow</ToggleTab>
         </div>
       </div>
       {showCopyFromDemo && (
@@ -431,8 +946,62 @@ function ToggleTab({
   );
 }
 
+// Rotating sub-labels shown while each phase is running, to make wait feel productive
+const PHASE_SUBSTEPS: Record<string, string[]> = {
+  frame: [
+    "Reading the intake brief and process notes",
+    "Surfacing the owner's stated frustration",
+    "Identifying confirmed patterns vs. assumptions",
+    "Framing the bottom-line problem",
+  ],
+  analyze: [
+    "Tracing causal chains across stages",
+    "Quantifying the current-state baseline",
+    "Comparing to industry benchmarks",
+    "Ranking root causes by impact",
+    "Naming the failure mechanism",
+  ],
+  synthesize: [
+    "Drafting the recommended first action",
+    "Building the standard operating procedure",
+    "Defining KPIs and alert thresholds",
+    "Writing the executive summary",
+    "Assembling the final report",
+  ],
+};
+
 function PhaseRow({ phase }: { phase: PhaseState }) {
-  const { status, label, summary, durationMs } = phase;
+  const { status, label, summary, phase: phaseId, startedAt } = phase;
+  const [substepIdx, setSubstepIdx] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  // Rotate sub-labels every 4s while running, track elapsed time for patience message
+  useEffect(() => {
+    if (status !== "running") return;
+    setSubstepIdx(0);
+    const start = startedAt ?? Date.now();
+    
+    // Update elapsed time every second
+    const tick = window.setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    
+    // Rotate substeps every 4s
+    const rotate = window.setInterval(() => {
+      setSubstepIdx((i) => i + 1);
+    }, 4000);
+    
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(rotate);
+    };
+  }, [status, startedAt]);
+
+  const substeps = PHASE_SUBSTEPS[phaseId] ?? [];
+  const currentSubstep = substeps.length > 0 ? substeps[substepIdx % substeps.length] : null;
+  
+  // Show patience message if phase has been running for more than 45 seconds
+  const showPatienceMsg = status === "running" && elapsedSec > 45;
 
   return (
     <li className="flex items-start gap-3">
@@ -447,21 +1016,22 @@ function PhaseRow({ phase }: { phase: PhaseState }) {
           <p className={["text-[13px] font-medium leading-snug", status === "pending" ? "text-ink-muted/50" : "text-ink"].join(" ")}>
             {label}
           </p>
-          {status === "done" && durationMs !== undefined && (
-            <span className="shrink-0 text-[11px] tabular-nums text-ink-muted">
-              {formatDuration(durationMs)}
-            </span>
-          )}
         </div>
 
         {status === "done" && summary && (
-          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-ink-soft">{summary}</p>
+          <p className="animate-fade-in mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-ink-soft">{summary}</p>
         )}
-        {status === "running" && (
-          <p className="mt-0.5 text-[11px] text-ink-muted">
-            <span className="inline-flex gap-0.5" aria-hidden>
+        {status === "running" && currentSubstep && (
+          <p key={currentSubstep} className="mt-1 animate-fade-in text-[11px] leading-relaxed text-ink-muted">
+            <span className="inline-flex gap-0.5 align-middle mr-1.5" aria-hidden>
               <Dot /><Dot delay="200ms" /><Dot delay="400ms" />
             </span>
+            {currentSubstep}
+          </p>
+        )}
+        {showPatienceMsg && (
+          <p className="mt-2 text-[11px] leading-relaxed text-ink-muted italic">
+            This step involves deep pattern analysis. Still untangling findings…
           </p>
         )}
       </div>
@@ -489,109 +1059,347 @@ function formatDuration(ms: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
-function buildMarkdownReport(
+// ─── Save report dropdown ────────────────────────────────────────────────────
+
+function SaveReportMenu({
+  open,
+  onOpenChange,
+  onSelect,
+  saved,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  onSelect: (format: "docx" | "pdf" | "txt") => void;
+  saved: boolean;
+}) {
+  const items: Array<{ format: "docx" | "pdf" | "txt"; label: string; sub: string }> = [
+    { format: "docx", label: "Word document",    sub: ".docx, editable in Word, Pages, Google Docs" },
+    { format: "pdf",  label: "PDF",              sub: ".pdf, opens print dialog (Save as PDF)" },
+    { format: "txt",  label: "Plain text",       sub: ".txt, copy-paste anywhere" },
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
+      >
+        {saved ? "Saved!" : "Save report"}
+        <span aria-hidden className="text-[10px] text-ink-muted">▾</span>
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop catches outside clicks */}
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => onOpenChange(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-full z-20 mt-1.5 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-card"
+          >
+            {items.map((item) => (
+              <button
+                key={item.format}
+                type="button"
+                role="menuitem"
+                onClick={() => onSelect(item.format)}
+                className="flex w-full flex-col items-start gap-0.5 border-b border-line px-4 py-3 text-left transition last:border-0 hover:bg-canvas"
+              >
+                <span className="text-[13px] font-medium text-ink">{item.label}</span>
+                <span className="text-[11px] text-ink-muted">{item.sub}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Printable HTML (for PDF export via window.print) ───────────────────────
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildPrintableHtmlReport(
   brief: IntakeBrief,
   g: GeneratedOutputPayload,
   analysis?: PipelineAnalysis
 ): string {
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const e = escapeHtml;
+
+  const benchmarksBlock = g.measureBaseline?.benchmarkSources && g.measureBaseline.benchmarkSources.length > 0
+    ? `<h3>Benchmark sources${g.measureBaseline.benchmarkCategory ? `: ${e(g.measureBaseline.benchmarkCategory)}` : ""}</h3>
+       <ul class="benchmarks">
+         ${g.measureBaseline.benchmarkSources.map((b) =>
+           `<li><span class="metric">${e(b.metric)}:</span> <strong>${e(b.figure)}</strong>. <a href="${e(b.url)}">${e(b.source)} (${b.year})</a></li>`
+         ).join("")}
+       </ul>`
+    : "";
+
+  const analysisMetricsBlock = analysis
+    ? `<h3>Baseline Metrics</h3>
+       <ul>
+         <li><strong>Conversion rate:</strong> ${e(String(analysis.conversionRate))}% (new lead → booked meeting)</li>
+         <li><strong>Median first response:</strong> ${e(String(analysis.medianFirstResponseHours.toFixed(1)))} hours (SLA: 4h)</li>
+         <li><strong>Stalled lead rate:</strong> ${e(String(analysis.stalledLeadRate))}% (${analysis.stalledLeads} leads)</li>
+         <li><strong>Missed follow-up rate:</strong> ${e(String(analysis.missedFollowupRate))}%</li>
+         <li><strong>Avg deal value:</strong> $${e(String(analysis.avgDealValue.toLocaleString()))} per lead</li>
+         <li><strong>Total leads:</strong> ${analysis.totalLeads} (${analysis.bookedMeetings} booked, ${analysis.stalledLeads} stalled, ${analysis.lostLeads} lost)</li>
+       </ul>
+       <h3>Leads by Stage</h3>
+       <ul>
+         ${analysis.stageDropoff.map((s) => 
+           `<li>${e(s.stage)}: ${s.count} leads (${(s.percentOfTotal * 100).toFixed(1)}%)</li>`
+         ).join("")}
+       </ul>
+       ${analysis.bySource.length > 1 ? `<h3>Conversion by Lead Source</h3>
+       <ul>
+         ${analysis.bySource.map((s) => 
+           `<li>${e(s.label)}: ${s.conversionRate}% (${s.total} leads, ${s.booked} booked)</li>`
+         ).join("")}
+       </ul>` : ""}`
+    : "";
+
+  const measureBlock = `${analysisMetricsBlock}${
+    g.measureBaseline
+      ? `<ul>${g.measureBaseline.currentStateMetrics.map((m) => `<li>${e(m)}</li>`).join("")}</ul>
+         <p><strong>Performance gap:</strong> ${e(g.measureBaseline.performanceGap)}</p>
+         <p><strong>Industry context:</strong> ${e(g.measureBaseline.industryContext)}</p>
+         <p><strong>Priority metric:</strong> ${e(g.measureBaseline.priorityMetric)}</p>
+         ${benchmarksBlock}`
+      : ""
+  }`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${e(brief.workflowName)}: DMAIC Analysis</title>
+  <style>
+    @page { size: Letter; margin: 0.75in; }
+    @media print {
+      .section { page-break-before: always; }
+      .section.first { page-break-before: avoid; }
+      a { color: #0066cc; text-decoration: none; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1a1a1a;
+      line-height: 1.55;
+      max-width: 7in;
+      margin: 0 auto;
+      padding: 0.5in 0;
+      font-size: 11pt;
+    }
+    .cover { text-align: left; margin-bottom: 1.5in; }
+    .cover h1 { font-size: 28pt; margin: 0 0 8pt; line-height: 1.15; }
+    .cover .meta { color: #666; font-size: 11pt; }
+    h1 { font-size: 18pt; color: #c45c2e; margin: 0 0 6pt; border-bottom: 2px solid #e8d5cc; padding-bottom: 6pt; }
+    h2 { font-size: 13pt; margin: 18pt 0 6pt; }
+    h3 { font-size: 11pt; margin: 12pt 0 4pt; }
+    p { margin: 0 0 8pt; }
+    ul { margin: 4pt 0 8pt; padding-left: 20pt; }
+    li { margin-bottom: 3pt; }
+    .section { margin-bottom: 24pt; }
+    .summary { background: #fff7f3; border: 1px solid #f0d8c8; border-radius: 6pt; padding: 14pt 18pt; }
+    .summary .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; margin-top: 10pt; }
+    .summary .label { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+    .alert { padding: 6pt 10pt; border-radius: 4pt; margin-bottom: 6pt; font-size: 10pt; }
+    .alert.warning { background: #fff4e8; border-left: 3px solid #cc6600; }
+    .alert.critical { background: #ffeaea; border-left: 3px solid #cc0000; }
+    .alert .sev { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .benchmarks { font-size: 10pt; }
+    .benchmarks .metric { color: #555; }
+    .footer { margin-top: 36pt; text-align: center; color: #aaa; font-size: 9pt; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <h1>${e(brief.workflowName)}: DMAIC Analysis</h1>
+    <div class="meta">${e(brief.businessName || "Custom case")} · ${date}</div>
+  </div>
+
+  <div class="section first summary">
+    <h1>Executive Summary</h1>
+    <p>${e(g.executiveSummary.headlineFinding)}</p>
+    <div class="grid">
+      <div><div class="label">Business impact</div>${e(g.executiveSummary.whyItMatters)}</div>
+      <div><div class="label">Primary cause</div>${e(g.executiveSummary.primaryCause)}</div>
+      <div><div class="label">First action</div>${e(g.executiveSummary.recommendedAction)}</div>
+      <div><div class="label">Monitoring</div>${e(g.executiveSummary.monitoringPlan)}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h1>Define: Problem Definition</h1>
+    <p><strong>Workflow:</strong> ${e(g.problemDefinition.workflow)}</p>
+    <p><strong>Business problem:</strong> ${e(g.problemDefinition.businessProblem)}</p>
+    <p><strong>Affected group:</strong> ${e(g.problemDefinition.affectedGroup)}</p>
+    <p><strong>Success metric:</strong> ${e(g.problemDefinition.successMetric)}</p>
+    <p><strong>Scope:</strong> ${e(g.problemDefinition.scope)}</p>
+  </div>
+
+  <div class="section">
+    <h1>Measure: Current State &amp; KPIs</h1>
+    ${measureBlock}
+  </div>
+
+  <div class="section">
+    <h1>Analyze: Root-Cause Analysis</h1>
+    <p>${e(g.rootCauseAnalysis.topLeakagePoint)}</p>
+    <h3>Ranked root causes</h3>
+    ${g.rootCauseAnalysis.rankedCauses.map((c) =>
+      `<p><strong>${c.rank}. ${e(c.factor)}:</strong> ${e(c.finding)}</p>`
+    ).join("")}
+    <p><strong>Key comparison:</strong> ${e(g.rootCauseAnalysis.supportingComparison)}</p>
+    <p><strong>Segment insight:</strong> ${e(g.rootCauseAnalysis.segmentInsight)}</p>
+  </div>
+
+  <div class="section">
+    <h1>Improve: Recommendation &amp; SOP</h1>
+    <p>${e(g.recommendation.firstAction)}</p>
+    <p><strong>Why this first:</strong> ${e(g.recommendation.whyThisFirst)}</p>
+    <p><strong>Expected result:</strong> ${e(g.recommendation.expectedEffect)}</p>
+    <p><strong>Owner:</strong> ${e(g.recommendation.owner)}</p>
+    <h2>SOP: ${e(g.workflowSOP.title)}</h2>
+    <p><em>${e(g.workflowSOP.objective)}</em></p>
+    <ul>${g.workflowSOP.bullets.map((b) => `<li>${e(b)}</li>`).join("")}</ul>
+    <p><strong>Escalation:</strong> ${e(g.workflowSOP.escalation)}</p>
+  </div>
+
+  <div class="section">
+    <h1>Control: Metrics, Alerts, Monitoring</h1>
+    <h3>Key performance indicators</h3>
+    <ul>
+      <li>${e(g.controlDashboard.primaryMetricLabel)}</li>
+      <li>${e(g.controlDashboard.secondaryMetricLabel)}</li>
+      <li>${e(g.controlDashboard.tertiaryMetricLabel)}</li>
+    </ul>
+    <p><strong>Watch closely:</strong> ${e(g.controlDashboard.segmentNeedingAttention)}</p>
+    <h3>Alert &amp; escalation rules</h3>
+    ${g.alertRules.map((r) =>
+      `<div class="alert ${r.severity}"><span class="sev">${r.severity}</span>: ${e(r.trigger)}<br/><strong>Action:</strong> ${e(r.action)}</div>`
+    ).join("")}
+    <h3>Ongoing monitoring</h3>
+    <p><strong>Owner:</strong> ${e(g.monitoringReport.owner)}</p>
+    <p><strong>Metrics:</strong> ${e(g.monitoringReport.metrics)}</p>
+    <p><strong>Thresholds:</strong> ${e(g.monitoringReport.thresholds)}</p>
+    <p><strong>If metrics drift:</strong> ${e(g.monitoringReport.responsePlan)}</p>
+  </div>
+
+  <div class="footer">Generated by OpsAdvisor · Claude Opus 4.7 · ${date}</div>
+</body>
+</html>`;
+}
+
+function buildPlainTextReport(
+  brief: IntakeBrief,
+  g: GeneratedOutputPayload,
+  analysis?: PipelineAnalysis
+): string {
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const sep = "\n" + "─".repeat(60) + "\n";
   const lines: string[] = [];
 
-  lines.push(`# Process Analysis Report`);
-  lines.push(`**${brief.businessName}** · ${brief.workflowName}`);
-  lines.push(`Generated ${date} by Operator Agent (Claude Opus 4.7)`);
-  lines.push(``);
+  lines.push(`${brief.workflowName.toUpperCase()}: DMAIC ANALYSIS`);
+  lines.push(`${brief.businessName}  ·  ${date}`);
+  lines.push(sep);
 
-  lines.push(`---`);
-  lines.push(``);
-
-  // Executive Summary
-  lines.push(`## Executive Summary`);
+  lines.push(`EXECUTIVE SUMMARY`);
   lines.push(g.executiveSummary.headlineFinding);
   lines.push(``);
-  lines.push(`**Business impact:** ${g.executiveSummary.whyItMatters}`);
-  lines.push(`**Primary cause:** ${g.executiveSummary.primaryCause}`);
-  lines.push(`**First action:** ${g.executiveSummary.recommendedAction}`);
-  lines.push(`**Monitoring:** ${g.executiveSummary.monitoringPlan}`);
-  lines.push(``);
+  lines.push(`Business impact:   ${g.executiveSummary.whyItMatters}`);
+  lines.push(`Primary cause:     ${g.executiveSummary.primaryCause}`);
+  lines.push(`First action:      ${g.executiveSummary.recommendedAction}`);
+  lines.push(`Monitoring:        ${g.executiveSummary.monitoringPlan}`);
+  lines.push(sep);
 
-  // Baseline metrics if available
-  if (analysis) {
-    lines.push(`## Baseline Performance`);
-    lines.push(`| Metric | Value |`);
-    lines.push(`|--------|-------|`);
-    lines.push(`| Conversion rate | ${analysis.conversionRate}% |`);
-    lines.push(`| Median first response | ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h) |`);
-    lines.push(`| Stalled lead rate | ${analysis.stalledLeadRate}% |`);
-    lines.push(`| Missed follow-up rate | ${analysis.missedFollowupRate}% |`);
-    lines.push(`| Total leads analyzed | ${analysis.totalLeads} |`);
+  lines.push(`DEFINE: PROBLEM DEFINITION`);
+  lines.push(`Workflow:        ${g.problemDefinition.workflow}`);
+  lines.push(`Business problem: ${g.problemDefinition.businessProblem}`);
+  lines.push(`Affected group:   ${g.problemDefinition.affectedGroup}`);
+  lines.push(`Success metric:   ${g.problemDefinition.successMetric}`);
+  lines.push(`Scope:            ${g.problemDefinition.scope}`);
+  lines.push(sep);
+
+  lines.push(`MEASURE: CURRENT STATE & KPIs`);
+  if (g.measureBaseline) {
+    g.measureBaseline.currentStateMetrics.forEach((m) => lines.push(`• ${m}`));
     lines.push(``);
+    lines.push(`Performance gap:  ${g.measureBaseline.performanceGap}`);
+    lines.push(`Industry context: ${g.measureBaseline.industryContext}`);
+    lines.push(`Priority metric:  ${g.measureBaseline.priorityMetric}`);
+    if (g.measureBaseline.benchmarkSources && g.measureBaseline.benchmarkSources.length > 0) {
+      lines.push(``);
+      lines.push(`Benchmark sources${g.measureBaseline.benchmarkCategory ? `: ${g.measureBaseline.benchmarkCategory}` : ""}:`);
+      g.measureBaseline.benchmarkSources.forEach((b) => {
+        lines.push(`  • ${b.metric}: ${b.figure}`);
+        lines.push(`    ${b.source} (${b.year}). ${b.url}`);
+      });
+    }
   }
+  lines.push(sep);
 
-  // Problem Definition
-  lines.push(`## Problem Definition`);
-  lines.push(`**Workflow:** ${g.problemDefinition.workflow}`);
-  lines.push(`**Problem:** ${g.problemDefinition.businessProblem}`);
-  lines.push(`**Affected group:** ${g.problemDefinition.affectedGroup}`);
-  lines.push(`**Success metric:** ${g.problemDefinition.successMetric}`);
-  lines.push(`**Scope:** ${g.problemDefinition.scope}`);
-  lines.push(``);
-
-  // Root Cause Analysis
-  lines.push(`## Root-Cause Analysis`);
-  lines.push(`**Top failure point:** ${g.rootCauseAnalysis.topLeakagePoint}`);
+  lines.push(`ANALYZE: ROOT-CAUSE ANALYSIS`);
+  lines.push(g.rootCauseAnalysis.topLeakagePoint);
   lines.push(``);
   g.rootCauseAnalysis.rankedCauses.forEach((c) => {
-    lines.push(`**${c.rank}. ${c.factor}**`);
-    lines.push(c.finding);
+    lines.push(`${c.rank}. ${c.factor}`);
+    lines.push(`   ${c.finding}`);
     lines.push(``);
   });
-  lines.push(`**Key comparison:** ${g.rootCauseAnalysis.supportingComparison}`);
-  lines.push(`**Segment insight:** ${g.rootCauseAnalysis.segmentInsight}`);
-  lines.push(``);
+  lines.push(`Key comparison:  ${g.rootCauseAnalysis.supportingComparison}`);
+  lines.push(`Segment insight: ${g.rootCauseAnalysis.segmentInsight}`);
+  lines.push(sep);
 
-  // Recommendation
-  lines.push(`## Recommended Fix`);
+  lines.push(`IMPROVE: RECOMMENDATION & SOP`);
   lines.push(g.recommendation.firstAction);
   lines.push(``);
-  lines.push(`**Why this first:** ${g.recommendation.whyThisFirst}`);
-  lines.push(`**Expected effect:** ${g.recommendation.expectedEffect}`);
-  lines.push(`**Owner:** ${g.recommendation.owner}`);
+  lines.push(`Why this first:  ${g.recommendation.whyThisFirst}`);
+  lines.push(`Expected result: ${g.recommendation.expectedEffect}`);
+  lines.push(`Owner:           ${g.recommendation.owner}`);
   lines.push(``);
+  lines.push(`SOP: ${g.workflowSOP.title}`);
+  lines.push(g.workflowSOP.objective);
+  lines.push(``);
+  g.workflowSOP.bullets.forEach((b) => lines.push(`• ${b}`));
+  lines.push(``);
+  lines.push(`Escalation: ${g.workflowSOP.escalation}`);
+  lines.push(sep);
 
-  // SOP
-  lines.push(`## Workflow SOP — ${g.workflowSOP.title}`);
-  lines.push(`*${g.workflowSOP.objective}*`);
+  lines.push(`CONTROL: METRICS, ALERTS, MONITORING`);
+  lines.push(`Primary KPI:   ${g.controlDashboard.primaryMetricLabel}`);
+  lines.push(`Secondary KPI: ${g.controlDashboard.secondaryMetricLabel}`);
+  lines.push(`Tertiary KPI:  ${g.controlDashboard.tertiaryMetricLabel}`);
+  lines.push(`Watch closely: ${g.controlDashboard.segmentNeedingAttention}`);
   lines.push(``);
-  g.workflowSOP.bullets.forEach((b) => lines.push(`- ${b}`));
-  lines.push(``);
-  lines.push(`**Escalation:** ${g.workflowSOP.escalation}`);
-  lines.push(`**Owner:** ${g.workflowSOP.owner}`);
-  lines.push(``);
-
-  // Control Dashboard
-  lines.push(`## Control Dashboard`);
-  lines.push(`- ${g.controlDashboard.primaryMetricLabel}`);
-  lines.push(`- ${g.controlDashboard.secondaryMetricLabel}`);
-  lines.push(`- ${g.controlDashboard.tertiaryMetricLabel}`);
-  lines.push(`- **Needs attention:** ${g.controlDashboard.segmentNeedingAttention}`);
-  lines.push(``);
-
-  // Alert Rules
-  lines.push(`## Alert Logic`);
+  lines.push(`Alert & escalation rules:`);
   g.alertRules.forEach((r) => {
-    lines.push(`- **[${r.severity.toUpperCase()}]** ${r.trigger} → ${r.action}`);
+    lines.push(`[${r.severity.toUpperCase()}] ${r.trigger}`);
+    lines.push(`  → ${r.action}`);
   });
   lines.push(``);
-
-  // Monitoring Report
-  lines.push(`## Monitoring Report`);
-  lines.push(`**Issue:** ${g.monitoringReport.issue}`);
-  lines.push(`**Fix:** ${g.monitoringReport.fix}`);
-  lines.push(`**Metrics:** ${g.monitoringReport.metrics}`);
-  lines.push(`**Thresholds:** ${g.monitoringReport.thresholds}`);
-  lines.push(`**Owner:** ${g.monitoringReport.owner}`);
-  lines.push(`**Response if drift:** ${g.monitoringReport.responsePlan}`);
+  lines.push(`Ongoing monitoring:`);
+  lines.push(`  Owner:      ${g.monitoringReport.owner}`);
+  lines.push(`  Metrics:    ${g.monitoringReport.metrics}`);
+  lines.push(`  Thresholds: ${g.monitoringReport.thresholds}`);
+  lines.push(`  If metrics drift: ${g.monitoringReport.responsePlan}`);
+  lines.push(``);
+  lines.push(`Generated by OpsAdvisor · Claude Opus 4.7 · ${date}`);
 
   return lines.join("\n");
 }

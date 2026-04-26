@@ -37,7 +37,7 @@ export const EXAMPLE_CASES: ExampleCase[] = [
       qualifiedLeadDefinition:
         "A full-time employee who has signed their offer letter and has a confirmed start date within the next 30 days.",
       suspectedStage:
-        "Between offer acceptance and Day 1 — pre-boarding tasks are not being completed, so employees arrive unprepared and IT provisioning is delayed.",
+        "Between offer acceptance and Day 1. Pre-boarding tasks are not being completed, so employees arrive unprepared and IT provisioning is delayed.",
       biggestFrustration:
         "Nobody owns the pre-boarding window. HR assumes IT will reach out, IT waits for HR to trigger the request, and the new hire sits in limbo until their first day.",
     },
@@ -82,7 +82,7 @@ TARGET: Full readiness sign-off by Day 21.`,
       businessName: "Clearline Software (Customer Success)",
       workflowName: "Support Ticket Resolution",
       painPoint:
-        "Priority 1 and Priority 2 tickets regularly breach the 4-hour and 24-hour SLAs. Tickets stall after initial triage — they're acknowledged but then sit unworked for hours. Customer satisfaction scores have dropped 18 points over two quarters.",
+        "Priority 1 and Priority 2 tickets regularly breach the 4-hour and 24-hour SLAs. Tickets stall after initial triage. They're acknowledged but then sit unworked for hours. Customer satisfaction scores have dropped 18 points over two quarters.",
       successMetric:
         "P1 tickets resolved or escalated within 4 hours. P2 tickets resolved within 24 hours. CSAT score above 4.2/5.0.",
       slaConstraint:
@@ -104,7 +104,7 @@ TARGET: Full readiness sign-off by Day 21.`,
       qualifiedLeadDefinition:
         "Any ticket from a paying customer with a confirmed account ID and a reproducible issue description.",
       suspectedStage:
-        "Between Triaged and Assigned — tickets pile up in the triage queue and agents pick selectively, leaving high-priority items waiting.",
+        "Between Triaged and Assigned. Tickets pile up in the triage queue and agents pick selectively, leaving high-priority items waiting.",
       biggestFrustration:
         "Agents don't have clear ownership. A ticket in 'Assigned' status might not be actively worked because the assigned agent is heads-down on something else and there's no re-routing rule.",
     },
@@ -164,7 +164,7 @@ RESOLUTION
       qualifiedLeadDefinition:
         "A contract submitted with complete vendor information, scope of work, contract value, and an assigned internal business owner.",
       suspectedStage:
-        "Revisions stage — contracts bounce between legal and the vendor multiple times, and there is no cap on revision rounds or a forcing function to resolve open items.",
+        "Revisions stage. Contracts bounce between legal and the vendor multiple times, and there is no cap on revision rounds or a forcing function to resolve open items.",
       biggestFrustration:
         "Nobody tracks where a contract is between stages. A contract 'in legal review' might be sitting in an attorney's inbox for 8 days with no one knowing it's blocked. There are no reminders, no escalation triggers, and no visibility.",
     },

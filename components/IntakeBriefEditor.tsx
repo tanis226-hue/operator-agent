@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 import { EXAMPLE_CASES } from "@/lib/exampleCases";
+import { DatabaseConnector } from "./DatabaseConnector";
 
 type Props = {
   brief: IntakeBrief;
@@ -20,17 +21,39 @@ export function IntakeBriefEditor({
   disabled,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: string }>>([]);
 
   function set<K extends keyof IntakeBrief>(key: K, value: IntakeBrief[K]) {
     onBriefChange({ ...brief, [key]: value });
   }
 
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    onProcessNoteChange(text);
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    let current = processNote;
+    const newMeta: Array<{ name: string; size: string }> = [];
+    for (const file of files) {
+      const text = await file.text();
+      const block = `\n\n--- FILE: ${file.name} ---\n${text}\n--- END: ${file.name} ---`;
+      current = current ? current + block : block.trimStart();
+      newMeta.push({ name: file.name, size: formatFileSize(file.size) });
+    }
+    onProcessNoteChange(current);
+    setUploadedFiles((prev) => [...prev, ...newMeta]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleRemoveFile(name: string) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\n*--- FILE: ${escaped} ---[\\s\\S]*?--- END: ${escaped} ---\\n*`, "g");
+    onProcessNoteChange(processNote.replace(regex, "").trim());
+    setUploadedFiles((prev) => prev.filter((f) => f.name !== name));
   }
 
   function handleLoadExample(id: string) {
@@ -190,49 +213,100 @@ export function IntakeBriefEditor({
       </div>
 
       <div className="border-t border-line px-6 py-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <label
-              htmlFor="process-note"
-              className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted"
-            >
-              Context &amp; supporting documents
-            </label>
-            <p className="mt-0.5 text-[12px] text-ink-muted">
-              Paste process rules, SOPs, data, reports, or any operational context. The more detail, the deeper the analysis.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,text/plain,text/markdown"
-              onChange={handleUpload}
-              disabled={disabled}
-              className="hidden"
-              id="process-note-upload"
-            />
-            <label
-              htmlFor="process-note-upload"
-              className={[
-                "cursor-pointer rounded-md border border-line bg-canvas px-3 py-1.5 text-[12px] font-medium text-ink transition",
-                disabled ? "cursor-not-allowed opacity-50" : "hover:bg-surface",
-              ].join(" ")}
-            >
-              Upload file
-            </label>
-          </div>
+        <div className="mb-4">
+          <p className="text-[13px] font-semibold text-ink">Data &amp; Supporting Documents</p>
+          <p className="mt-0.5 text-[12px] text-ink-muted">
+            Upload files or paste text below. CSV exports, SOPs, reports, and notes all feed directly into the analysis.
+          </p>
         </div>
 
-        <textarea
-          id="process-note"
-          value={processNote}
-          onChange={(e) => onProcessNoteChange(e.target.value)}
+        {/* Database connector */}
+        <DatabaseConnector
           disabled={disabled}
-          rows={6}
-          placeholder="Paste anything relevant: process documentation, SOPs, performance data, team notes, past reports. Claude will reason from whatever context you provide."
-          className="mt-3 w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+          onData={(label, tsv, rowCount) => {
+            const block = `\n\n--- DB QUERY: ${label} (${rowCount} rows) ---\n${tsv}\n--- END DB QUERY ---`;
+            const next = processNote ? processNote + block : block.trimStart();
+            onProcessNoteChange(next);
+            setUploadedFiles((prev) => [...prev, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows` }]);
+          }}
         />
+
+        {/* Upload zone */}
+        <div className={[
+          "relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-6 py-6 text-center transition",
+          disabled ? "cursor-not-allowed opacity-50 border-line bg-canvas" : "border-line bg-canvas hover:border-accent/50 cursor-pointer",
+        ].join(" ")}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".txt,.md,.csv,.json,.tsv,.log,text/plain,text/markdown,text/csv,application/json"
+            onChange={handleUpload}
+            disabled={disabled}
+            className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+            id="process-note-upload"
+          />
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10 text-lg">📎</div>
+          <p className="text-[13px] font-medium text-ink">Drop files here or click to browse</p>
+          <p className="text-[11px] text-ink-muted">CSV, JSON, TXT, MD, TSV · Multiple files accepted</p>
+        </div>
+
+        {/* Uploaded file chips */}
+        {uploadedFiles.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {uploadedFiles.map((f) => (
+              <div
+                key={f.name}
+                className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink"
+              >
+                <span>📄 {f.name}</span>
+                <span className="text-ink-muted">{f.size}</span>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(f.name)}
+                    className="ml-0.5 text-ink-muted hover:text-red-500"
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Paste area */}
+        <div className="mt-4 flex flex-col gap-1">
+          <label
+            htmlFor="process-note"
+            className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted"
+          >
+            Or paste context directly
+          </label>
+          <textarea
+            id="process-note"
+            value={uploadedFiles.length > 0
+              ? processNote.replace(/\n*--- FILE:[\s\S]*?--- END:[^\n]*---\n*/g, "").trim()
+              : processNote}
+            onChange={(e) => {
+              const fileBlocks = uploadedFiles
+                .map((f) => {
+                  const escaped = f.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                  const match = processNote.match(new RegExp(`--- FILE: ${escaped} ---[\\s\\S]*?--- END: ${escaped} ---`));
+                  return match ? match[0] : "";
+                })
+                .filter(Boolean)
+                .join("\n\n");
+              const combined = [e.target.value.trim(), fileBlocks].filter(Boolean).join("\n\n");
+              onProcessNoteChange(combined);
+            }}
+            disabled={disabled}
+            rows={5}
+            placeholder="Paste process docs, SOPs, team notes, metrics, escalation history, or anything that gives context about how this workflow actually runs."
+            className="w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </div>
       </div>
     </section>
   );

@@ -58,6 +58,36 @@ export type AlertRule = {
   severity: "warning" | "critical";
 };
 
+export type BenchmarkSource = {
+  metric: string;
+  figure: string;
+  source: string;
+  year: number;
+  url: string;
+};
+
+export type MeasureBaseline = {
+  currentStateMetrics: string[];
+  performanceGap: string;
+  industryContext: string;
+  priorityMetric: string;
+  benchmarkCategory?: string;
+  benchmarkSources?: BenchmarkSource[];
+};
+
+export type PrioritizedAction = {
+  action: string;
+  when: "this week" | "this month" | "this quarter";
+  expectedLift: string;
+};
+
+export type OwnerBrief = {
+  problem: string;
+  moneyAtRisk: string;
+  actions: PrioritizedAction[];
+  nextDecision: string;
+};
+
 export type GeneratedOutputPayload = {
   executiveSummary: ExecutiveSummary;
   problemDefinition: ProblemDefinition;
@@ -67,4 +97,6 @@ export type GeneratedOutputPayload = {
   monitoringReport: MonitoringReport;
   controlDashboard: ControlDashboard;
   alertRules: AlertRule[];
+  measureBaseline?: MeasureBaseline;
+  ownerBrief?: OwnerBrief;
 };

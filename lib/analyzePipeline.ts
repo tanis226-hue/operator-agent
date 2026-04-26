@@ -212,7 +212,7 @@ export function analyzePipeline(records: LeadRecord[]): PipelineAnalysis {
   if (missedDelta > 0) {
     causes.push({
       factor: "Missed follow-up",
-      description: `Leads with missed follow-up convert at ${conversionMissedFollowup}% vs ${conversionRate}% overall — a ${missedDelta.toFixed(1)}pp gap.`,
+      description: `Leads with missed follow-up convert at ${conversionMissedFollowup}% vs ${conversionRate}% overall, a ${missedDelta.toFixed(1)}pp gap.`,
       impactDelta: missedDelta,
       affectedLeads: missedRecs.length,
     });
@@ -222,7 +222,7 @@ export function analyzePipeline(records: LeadRecord[]): PipelineAnalysis {
   if (timelyRecs.length > 0 && delayedRecs.length > 0) {
     causes.push({
       factor: "Delayed first response (>24h)",
-      description: `Leads contacted within 4h convert at ${conversionWithTimely}% vs ${conversionWithDelayed}% for those contacted after 24h — a ${delayedDelta.toFixed(1)}pp gap.`,
+      description: `Leads contacted within 4h convert at ${conversionWithTimely}% vs ${conversionWithDelayed}% for those contacted after 24h, a ${delayedDelta.toFixed(1)}pp gap.`,
       impactDelta: delayedDelta,
       affectedLeads: delayedRecs.length,
     });
@@ -236,7 +236,7 @@ export function analyzePipeline(records: LeadRecord[]): PipelineAnalysis {
     if (ownerDelta > 5) {
       causes.push({
         factor: `Owner performance gap (${worst.label} vs ${best.label})`,
-        description: `${worst.label} converts at ${worst.conversionRate}% vs ${best.label} at ${best.conversionRate}% — a ${ownerDelta.toFixed(1)}pp gap, likely tied to response discipline.`,
+        description: `${worst.label} converts at ${worst.conversionRate}% vs ${best.label} at ${best.conversionRate}%, a ${ownerDelta.toFixed(1)}pp gap, likely tied to response discipline.`,
         impactDelta: ownerDelta,
         affectedLeads: worst.total,
       });

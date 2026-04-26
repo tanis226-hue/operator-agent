@@ -1,4 +1,4 @@
-import { PRODUCT_SUBTITLE, WORKFLOW_LABEL } from "@/lib/workflow";
+import { PRODUCT_SUBTITLE } from "@/lib/workflow";
 
 export function Header() {
   return (
@@ -18,7 +18,7 @@ export function Header() {
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
               <span className="text-[15px] font-semibold tracking-tight text-ink">
-                Operator Agent
+                OpsAdvisor
               </span>
             </div>
             <p className="hidden truncate text-[12px] text-ink-muted md:block">
@@ -27,14 +27,11 @@ export function Header() {
           </div>
         </div>
 
-        {/* Right — workflow badge + built-with */}
+        {/* Right — single workflow badge */}
         <div className="flex shrink-0 items-center gap-3">
-          <span className="hidden items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-[11px] font-medium text-ink-soft sm:inline-flex">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
-            DMAIC Process Analysis
-          </span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-soft px-3 py-1 text-[11px] font-medium text-accent">
-            Built with Claude Opus 4.7
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+            DMAIC Analysis · Claude Opus 4.7
           </span>
         </div>
 

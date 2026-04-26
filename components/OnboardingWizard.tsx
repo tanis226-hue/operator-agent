@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import type { IntakeBrief } from "@/lib/intakeBrief";
+import { DatabaseConnector } from "./DatabaseConnector";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ type WizardState = {
   problemType: string | null;
   specificAnswers: Record<string, string>;
   context: string;
+  uploadedFiles: Array<{ name: string; size: string }>;
 };
 
 // ─── Industry config ────────────────────────────────────────────────────────────
@@ -27,13 +29,20 @@ const INDUSTRIES: Array<{ id: Industry; label: string; desc: string; icon: strin
   { id: "other",      label: "Other",       desc: "Non-profit, research, and more",           icon: "💡" },
 ];
 
+const BUSINESS_SUBTYPES: Array<{ id: string; label: string; desc: string }> = [
+  { id: "tech-saas",     label: "Technology / SaaS",            desc: "Software, platforms, digital products" },
+  { id: "retail",        label: "Retail & E-commerce",           desc: "Product sales, storefronts, marketplaces" },
+  { id: "legal",         label: "Professional Services",         desc: "Law firms, consulting, accounting" },
+  { id: "manufacturing", label: "Manufacturing & Supply Chain",  desc: "Production, logistics, distribution" },
+  { id: "real-estate",   label: "Real Estate & Property",        desc: "Brokerages, property management" },
+  { id: "financial",     label: "Financial Services",            desc: "Lending, insurance, fintech" },
+  { id: "general-biz",   label: "General Business",              desc: "B2B, B2C, or doesn't fit above" },
+];
+
 const OTHER_SUBTYPES: Array<{ id: string; label: string; desc: string }> = [
-  { id: "nonprofit",      label: "Non-profit / NGO",              desc: "Mission-driven orgs, charities" },
-  { id: "legal",          label: "Legal & Professional Services", desc: "Law firms, consulting, accounting" },
-  { id: "research",       label: "Research / Academia",           desc: "Labs, think tanks, universities" },
-  { id: "manufacturing",  label: "Manufacturing & Supply Chain",  desc: "Production, logistics, distribution" },
-  { id: "real-estate",    label: "Real Estate & Property",        desc: "Brokerages, property management" },
-  { id: "general",        label: "General / Other",               desc: "Something not listed above" },
+  { id: "nonprofit",     label: "Non-profit / NGO",              desc: "Mission-driven orgs, charities" },
+  { id: "research",      label: "Research / Academia",           desc: "Labs, think tanks, universities" },
+  { id: "general",       label: "General / Other",               desc: "Something not listed above" },
 ];
 
 const SIZES: Array<{ id: TeamSize; label: string; desc: string }> = [
@@ -469,7 +478,7 @@ const HEALTHCARE_PROBLEMS: ProblemConfig[] = [
       { id: "auditPrep", question: "How do you typically prepare for audits?", type: "cards",
         options: ["Ongoing continuous compliance program", "Quarterly compliance reviews", "Reactive / audit-driven only", "No formal process"] },
       { id: "docGaps", question: "How often are documentation gaps discovered?", type: "cards",
-        options: ["Rarely — caught proactively", "During scheduled reviews", "During audits only", "After incidents"] },
+        options: ["Rarely, caught proactively", "During scheduled reviews", "During audits only", "After incidents"] },
     ],
   },
   { ...BUSINESS_PROBLEMS.find((p) => p.id === "other")! },
@@ -497,7 +506,8 @@ function buildBriefFromWizard(
   const allProblems = [...BUSINESS_PROBLEMS, ...GOVERNMENT_PROBLEMS, ...EDUCATION_PROBLEMS, ...HEALTHCARE_PROBLEMS];
   const config = allProblems.find((p) => p.id === problemType) ?? BUSINESS_PROBLEMS.find((p) => p.id === "other")!;
   const industryLabel = INDUSTRIES.find((i) => i.id === industry)?.label ?? industry;
-  const subLabel = subIndustry ? OTHER_SUBTYPES.find((s) => s.id === subIndustry)?.label : null;
+  const allSubtypes = [...BUSINESS_SUBTYPES, ...OTHER_SUBTYPES];
+  const subLabel = subIndustry ? allSubtypes.find((s) => s.id === subIndustry)?.label : null;
   const sizeLabel = SIZES.find((s) => s.id === size)?.label ?? size;
   const isOther = problemType === "other";
 
@@ -554,6 +564,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
     problemType: null,
     specificAnswers: {},
     context: "",
+    uploadedFiles: [],
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -570,7 +581,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 
   function selectIndustry(id: Industry) {
     setAnswers((a) => ({ ...a, industry: id, subIndustry: null, problemType: null, specificAnswers: {} }));
-    if (id === "other") {
+    if (id === "other" || id === "business") {
       setShowSubIndustry(true);
     } else {
       setShowSubIndustry(false);
@@ -580,16 +591,42 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 
   function selectSubIndustry(id: string) {
     setAnswers((a) => ({ ...a, subIndustry: id }));
+    // Batch both updates so there is no intermediate render that flashes the bare industry list
     setShowSubIndustry(false);
-    setTimeout(() => setStep(2), 120);
+    setStep(2);
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    setAnswers((a) => ({ ...a, context: a.context ? `${a.context}\n\n${text}` : text }));
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    for (const file of files) {
+      const text = await file.text();
+      const block = `\n\n--- FILE: ${file.name} ---\n${text}\n--- END: ${file.name} ---`;
+      setAnswers((a) => ({
+        ...a,
+        context: a.context ? a.context + block : block.trimStart(),
+        uploadedFiles: [...a.uploadedFiles, { name: file.name, size: formatFileSize(file.size) }],
+      }));
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleRemoveFile(name: string) {
+    setAnswers((a) => {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`\\n*--- FILE: ${escaped} ---[\\s\\S]*?--- END: ${escaped} ---\\n*`, "g");
+      return {
+        ...a,
+        context: a.context.replace(regex, "").trim(),
+        uploadedFiles: a.uploadedFiles.filter((f) => f.name !== name),
+      };
+    });
   }
 
   function handleStart() {
@@ -647,14 +684,14 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
             ))}
           </div>
 
-          {/* Other sub-type clarification */}
+          {/* Sub-type clarification for Business and Other */}
           {showSubIndustry && (
             <div className="mt-6 flex flex-col gap-4 border-t border-line pt-6">
               <p className="text-[15px] font-medium text-ink">
                 Which best describes your field?
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {OTHER_SUBTYPES.map((sub) => (
+                {(answers.industry === "business" ? BUSINESS_SUBTYPES : OTHER_SUBTYPES).map((sub) => (
                   <OptionCard
                     key={sub.id}
                     label={sub.label}
@@ -770,37 +807,94 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
         </WizardStep>
       )}
 
-      {/* Step 5: Context */}
+      {/* Step 5: Data & Context */}
       {step === 5 && (
         <WizardStep
-          title="Any relevant context to add?"
-          subtitle="Paste process docs, SOPs, data exports, or team notes. The more detail you provide, the deeper the analysis. This step is optional."
+          title="Add your data and context"
+          subtitle="Upload files or paste text. The more operational detail you provide, the more specific and actionable the analysis."
         >
-          <textarea
-            value={answers.context}
-            onChange={(e) => setAnswers((a) => ({ ...a, context: e.target.value }))}
-            rows={8}
-            placeholder="Paste anything relevant: process documentation, data exports, past reports, team notes, SLAs, org charts."
-            className="w-full resize-y rounded-md border border-line bg-canvas px-3 py-3 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          {/* Database connector */}
+          <DatabaseConnector
+            disabled={false}
+            onData={(label, tsv, rowCount) => {
+              const block = `\n\n--- DB QUERY: ${label} (${rowCount} rows) ---\n${tsv}\n--- END DB QUERY ---`;
+              setAnswers((a) => ({
+                ...a,
+                context: a.context ? a.context + block : block.trimStart(),
+                uploadedFiles: [...a.uploadedFiles, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows` }],
+              }));
+            }}
           />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".txt,.md,text/plain,text/markdown"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="wizard-file-upload"
-              />
-              <label
-                htmlFor="wizard-file-upload"
-                className="cursor-pointer rounded-md border border-line bg-canvas px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-surface"
-              >
-                Upload file
-              </label>
-              <span className="text-[12px] text-ink-muted">or paste above</span>
+
+          {/* Drop-zone / upload area */}
+          <div className="relative flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-line bg-canvas px-6 py-8 text-center transition hover:border-accent/50">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".txt,.md,.csv,.json,.tsv,.log,text/plain,text/markdown,text/csv,application/json"
+              onChange={handleFileUpload}
+              className="absolute inset-0 cursor-pointer opacity-0"
+              id="wizard-file-upload"
+            />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-xl">📎</div>
+            <div>
+              <p className="text-[14px] font-medium text-ink">Drop files here or click to browse</p>
+              <p className="mt-0.5 text-[12px] text-ink-muted">CSV, JSON, TXT, MD, TSV · Multiple files accepted</p>
             </div>
+          </div>
+
+          {/* Uploaded file chips */}
+          {answers.uploadedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {answers.uploadedFiles.map((f) => (
+                <div
+                  key={f.name}
+                  className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink"
+                >
+                  <span>📄 {f.name}</span>
+                  <span className="text-ink-muted">{f.size}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(f.name)}
+                    className="ml-0.5 text-ink-muted hover:text-red-500"
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Paste / text area */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+              Or paste context directly
+            </label>
+            <textarea
+              value={answers.uploadedFiles.length > 0
+                ? answers.context.replace(/\n*--- FILE:[\s\S]*?--- END:[^\n]*---\n*/g, "").trim()
+                : answers.context}
+              onChange={(e) => {
+                const fileBlocks = answers.uploadedFiles
+                  .map((f) => {
+                    const escaped = f.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const match = answers.context.match(new RegExp(`--- FILE: ${escaped} ---[\\s\\S]*?--- END: ${escaped} ---`));
+                    return match ? match[0] : "";
+                  })
+                  .filter(Boolean)
+                  .join("\n\n");
+                const combined = [e.target.value.trim(), fileBlocks].filter(Boolean).join("\n\n");
+                setAnswers((a) => ({ ...a, context: combined }));
+              }}
+              rows={5}
+              placeholder="Paste process docs, SOPs, team notes, metrics, escalation history, or anything that gives context about how this workflow actually runs."
+              className="w-full resize-y rounded-md border border-line bg-canvas px-3 py-3 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={handleStart}

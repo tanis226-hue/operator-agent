@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { IntakeBrief } from "./intakeBrief";
 import type { GeneratedOutputPayload } from "./outputTypes";
-import type { FrameOutput, AnalyzeOutput, PipelineEvent, PipelineLog } from "./pipelinePhases";
+import type { FrameOutput, MeasureOutput, AnalyzeOutput, PipelineEvent, PipelineLog } from "./pipelinePhases";
+import { selectBenchmarks, formatBenchmarksForPrompt } from "./benchmarks";
 
 const MODEL = "claude-opus-4-7";
 const SYSTEM_PROMPT =
@@ -78,15 +79,56 @@ Output this exact JSON:
 }`;
 }
 
-// ─── Phase 2: Analyze ────────────────────────────────────────────────────────
+// ─── Phase 2: Measure ────────────────────────────────────────────────────────
 
 function buildPhase2Prompt(
   brief: IntakeBrief,
+  frame: FrameOutput
+): string {
+  const benchmarkCategory = selectBenchmarks(brief);
+  const benchmarkBlock = formatBenchmarksForPrompt(benchmarkCategory);
+
+  return `PHASE 1 OUTPUT (framing)
+${JSON.stringify(frame, null, 2)}
+
+${benchmarkBlock}
+
+OWNER CONTEXT
+Business: ${brief.businessName}
+Workflow: ${brief.workflowName}
+Stages: ${brief.currentStages.join(" → ")}
+Success metric: ${brief.successMetric}
+SLA constraint: ${brief.slaConstraint}
+
+TASK: Given the problem statement from Phase 1, now establish WHAT the current state is and HOW FAR it is from the owner's stated success metric. You have industry benchmarks above — use them to contextualize this team's performance. Be credible. Quote the benchmarks exactly. Do NOT speculate or invent metrics.
+
+Output ONLY this JSON (no markdown, no explanation):
+{
+  "metric1": "Name of first KPI and its current value",
+  "metric2": "Name of second KPI and its current value",
+  "metric3": "Name of third KPI and its current value",
+  "performanceGap": "Specific gap between current and desired state",
+  "industryContext": "How this compares to industry benchmarks with specific cited figures",
+  "priorityMetric": "The one metric that if improved would achieve the success goal",
+  "benchmarkCategory": "${benchmarkCategory.label}",
+  "benchmarkSummary": "Key insight from the relevant benchmark",
+  "baseline": "What is actually happening operationally that explains this performance"
+}`;
+}
+
+// ─── Phase 3: Analyze ────────────────────────────────────────────────────────
+
+function buildPhase3Prompt(
+  brief: IntakeBrief,
   frame: FrameOutput,
+  measure: MeasureOutput,
   processNote: string
 ): string {
   return `PHASE 1 OUTPUT (framing)
-${JSON.stringify(frame, null, 2)}
+${JSON.stringify(frame)}
+
+PHASE 2 OUTPUT (baseline measurement)
+${JSON.stringify(measure)}
 
 WORKFLOW CONTEXT
 Business: ${brief.businessName}
@@ -97,7 +139,7 @@ Key constraint: ${brief.slaConstraint}
 Biggest frustration: ${brief.biggestFrustration}
 ${processNote.trim() ? `\nPROCESS DOCUMENTATION\n${processNote.trim()}` : ""}
 
-TASK: Go beyond WHAT is broken to WHY it is broken. Identify the specific mechanisms — behavioral, structural, or systemic — that cause this workflow to fail. Think carefully about how the stages interact, where handoffs break down, and what invisible pressures on the people in the process cause the failures. Explain how these causes interact and amplify each other.
+TASK: Given the problem framing (Phase 1) and the measured performance gap (Phase 2), now diagnose WHY that gap exists. Identify the specific mechanisms — behavioral, structural, or systemic — that cause this workflow to fail at the measured level. Think carefully about how the stages interact, where handoffs break down, and what invisible pressures on the people in the process cause the performance shortfall you measured. Explain how these causes interact and amplify each other. Ground your analysis in the performance gap from Phase 2.
 
 Output this exact JSON:
 {
@@ -126,20 +168,28 @@ Output this exact JSON:
 }`;
 }
 
-// ─── Phase 3: Synthesize ─────────────────────────────────────────────────────
+// ─── Phase 4: Synthesize (Improve + Control) ────────────────────────────────
 
-function buildPhase3Prompt(
+function buildPhase4Prompt(
   brief: IntakeBrief,
   frame: FrameOutput,
+  measure: MeasureOutput,
   analyze: AnalyzeOutput
 ): string {
   const stages = brief.currentStages.join(" → ");
+  const benchmarkCategory = selectBenchmarks(brief);
+  const benchmarkBlock = formatBenchmarksForPrompt(benchmarkCategory);
 
-  return `PHASE 1 OUTPUT (framing)
-${JSON.stringify(frame, null, 2)}
+  return `${benchmarkBlock}
 
-PHASE 2 OUTPUT (root cause analysis)
-${JSON.stringify(analyze, null, 2)}
+PHASE 1 OUTPUT (framing)
+${JSON.stringify(frame)}
+
+PHASE 2 OUTPUT (baseline measurement)
+${JSON.stringify(measure)}
+
+PHASE 3 OUTPUT (root cause analysis)
+${JSON.stringify(analyze)}
 
 OWNER GOALS
 Business: ${brief.businessName}
@@ -150,81 +200,93 @@ Success metric: ${brief.successMetric}
 Key constraint: ${brief.slaConstraint}
 Biggest frustration: ${brief.biggestFrustration}
 
-TASK: Generate the full user-facing report. Every section must be grounded in the mechanisms discovered in phases 1 and 2. Reference specific findings — not generic advice that could apply to any business. Speak directly to this owner's situation. This report will be read by someone who is frustrated and needs to know exactly what to do next.
+TASK: Generate the full user-facing report. Every section must be grounded in the problem framing (Phase 1), measured performance gap (Phase 2), and root causes (Phase 3). Your recommendations in Improve & Control must directly address the ranked causes and move the measured KPIs from Phase 2. Reference specific findings — not generic advice that could apply to any business. Speak directly to this owner's situation. This report will be read by someone who is frustrated and needs to know exactly what to do next.
 
 RULES:
 - SOP bullets must be exactly 5 strings.
 - alertRules must be exactly 5 objects, each with severity "warning" or "critical" only.
 - Do not use "AI", "DMAIC", "agentic", "synergy", or academic/consultant jargon.
+- Do not use em dashes (—) anywhere in your output. Use commas, periods, or colons instead.
 - All text must be in plain, direct English a business owner can act on immediately.
 - Metric labels (primaryMetricLabel etc.) should state the KPI name and a specific target or current value.
 
-Output this exact JSON:
+Output ONLY this JSON (no markdown, no explanation):
 {
   "executiveSummary": {
-    "headlineFinding": "1-2 sentences. What is broken and why it matters right now. Name the specific mechanism from phase 2.",
-    "whyItMatters": "1-2 sentences. Business consequence in revenue, time, customer, or operational terms.",
-    "primaryCause": "1-2 sentences. The dominant driver with specific evidence from the analysis.",
-    "recommendedAction": "1 sentence. The single most important first change — concrete and assignable.",
-    "monitoringPlan": "1 sentence. The specific metric that will confirm the fix is working."
+    "headlineFinding": "What is broken and why it matters",
+    "whyItMatters": "Business consequence in revenue or operational terms",
+    "primaryCause": "The dominant driver with specific evidence",
+    "recommendedAction": "The single most important first change",
+    "monitoringPlan": "The metric that will confirm the fix is working"
   },
   "problemDefinition": {
     "workflow": "${brief.workflowName}",
-    "businessProblem": "75-100 words. What the process is designed to do versus what is actually happening. Name specific stages and roles. Plain English.",
-    "affectedGroup": "The specific roles affected by this problem.",
+    "businessProblem": "What the process is designed to do versus what is happening",
+    "affectedGroup": "Roles or teams affected by this problem",
     "successMetric": "${brief.successMetric}",
     "scope": "Analysis covers: ${stages}."
   },
   "rootCauseAnalysis": {
-    "topLeakagePoint": "1-2 sentences identifying where in the workflow the most failure is occurring and the specific behavioral pattern driving it.",
+    "topLeakagePoint": "Where in the workflow the most failure occurs",
     "rankedCauses": [
-      { "rank": 1, "factor": "factor name", "finding": "1-2 sentences with specific evidence from the analysis." },
-      { "rank": 2, "factor": "factor name", "finding": "1-2 sentences." },
-      { "rank": 3, "factor": "factor name", "finding": "1-2 sentences." }
+      {"rank": 1, "factor": "First cause", "finding": "Evidence and impact"},
+      {"rank": 2, "factor": "Second cause", "finding": "Evidence and impact"},
+      {"rank": 3, "factor": "Third cause", "finding": "Evidence and impact"}
     ],
-    "supportingComparison": "1-2 sentences contrasting the current broken state with what the process would look like if the primary cause were fixed.",
-    "segmentInsight": "1-2 sentences on the most actionable pattern across roles, teams, or stages."
+    "supportingComparison": "Contrast between broken state and fixed state",
+    "segmentInsight": "Most actionable pattern across roles or stages"
   },
   "recommendation": {
-    "firstAction": "2-3 sentences. Exactly what should change, who does it, and how. Specific enough to assign today.",
-    "whyThisFirst": "1-2 sentences. Why this intervention has the highest expected return of all possible changes.",
-    "expectedEffect": "1-2 sentences. What measurable improvement should appear, and within what timeframe.",
-    "owner": "The specific role responsible for executing this change."
+    "firstAction": "Exactly what should change and who should do it",
+    "whyThisFirst": "Why this has the highest expected return",
+    "expectedEffect": "Measurable improvement and timeframe",
+    "owner": "Role responsible for this change"
   },
   "workflowSOP": {
-    "title": "A specific, actionable title for this SOP — name the workflow and the standard being set.",
-    "objective": "1 sentence — the specific operational outcome this rule is designed to guarantee.",
-    "bullets": [
-      "Rule 1: specific trigger + required action with timeframe",
-      "Rule 2: specific trigger + required action with timeframe",
-      "Rule 3: specific trigger + required action with timeframe",
-      "Rule 4: specific trigger + required action with timeframe",
-      "Rule 5: specific trigger + required action with timeframe"
-    ],
-    "escalation": "1 sentence — the specific condition that triggers escalation, to whom, and within what timeframe.",
-    "owner": "The role responsible for enforcing and updating this SOP."
+    "title": "Actionable SOP title naming the workflow",
+    "objective": "Specific operational outcome this SOP guarantees",
+    "bullets": ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4", "Bullet 5"],
+    "escalation": "Condition triggering escalation and timeframe",
+    "owner": "Role responsible for this SOP"
   },
   "monitoringReport": {
-    "issue": "1-2 sentences — the operational problem identified and confirmed.",
-    "fix": "1-2 sentences — the specific change recommended.",
-    "metrics": "The 3 specific metrics to monitor going forward — name each one.",
-    "thresholds": "The specific alert threshold for each of the 3 metrics.",
-    "owner": "The role who owns ongoing monitoring.",
-    "responsePlan": "2-3 sentences — the exact sequence of actions if metrics drift back toward the problem."
+    "issue": "The operational problem identified",
+    "fix": "The specific change recommended",
+    "metrics": "Metric1; Metric2; Metric3",
+    "thresholds": "Alert threshold for each metric",
+    "owner": "Role who owns monitoring",
+    "responsePlan": "Sequence of actions if metrics drift back"
   },
   "controlDashboard": {
-    "primaryMetricLabel": "Primary KPI: [name] — [current or target value with context]",
-    "secondaryMetricLabel": "Secondary KPI: [name] — [current or target value with context]",
-    "tertiaryMetricLabel": "Tertiary KPI: [name] — [current or target value with context]",
-    "segmentNeedingAttention": "The one specific area, role, or stage that most urgently needs attention based on the analysis."
+    "primaryMetricLabel": "Primary KPI with current or target value",
+    "secondaryMetricLabel": "Secondary KPI with current or target value",
+    "tertiaryMetricLabel": "Tertiary KPI with current or target value",
+    "segmentNeedingAttention": "Area or stage most needing attention"
   },
   "alertRules": [
-    { "trigger": "Specific measurable condition that fires this alert", "action": "Exactly what should happen when triggered", "severity": "warning" },
-    { "trigger": "Specific measurable condition", "action": "Exactly what should happen", "severity": "critical" },
-    { "trigger": "Specific measurable condition", "action": "Exactly what should happen", "severity": "warning" },
-    { "trigger": "Specific measurable condition", "action": "Exactly what should happen", "severity": "critical" },
-    { "trigger": "Specific measurable condition", "action": "Exactly what should happen", "severity": "warning" }
-  ]
+    {"trigger": "Alert condition 1", "action": "Response action 1", "severity": "warning"},
+    {"trigger": "Alert condition 2", "action": "Response action 2", "severity": "critical"},
+    {"trigger": "Alert condition 3", "action": "Response action 3", "severity": "warning"},
+    {"trigger": "Alert condition 4", "action": "Response action 4", "severity": "critical"},
+    {"trigger": "Alert condition 5", "action": "Response action 5", "severity": "warning"}
+  ],
+  "measureBaseline": {
+    "currentStateMetrics": ["Metric 1 with value", "Metric 2 with value", "Metric 3 with value"],
+    "performanceGap": "Gap between current and desired state",
+    "industryContext": "How this performance compares to industry benchmarks",
+    "priorityMetric": "The metric to move first to achieve success",
+    "benchmarkCategory": "${benchmarkCategory.label}"
+  },
+  "ownerBrief": {
+    "problem": "1 sentence — the core operational failure in plain English that a non-technical owner can act on. No jargon.",
+    "moneyAtRisk": "Short dollar or percentage figure only — e.g. '$180k at risk' or '~35% of pipeline value'. Maximum 8 words. Do not write a sentence or paragraph.",
+    "actions": [
+      { "action": "Most urgent change — active verb, names specific tool, rule, or role. No more than 15 words.", "when": "this week", "expectedLift": "Specific measurable outcome" },
+      { "action": "Second priority change — process adjustment or reporting change.", "when": "this month", "expectedLift": "Specific measurable outcome" },
+      { "action": "Longer-term structural fix — routing, coverage, or automation improvement.", "when": "this quarter", "expectedLift": "Specific measurable outcome" }
+    ],
+    "nextDecision": "1 sentence. The single most concrete thing to do Monday morning. Names the specific tool, person, meeting, or field — not a vague directive."
+  }
 }`;
 }
 
@@ -239,12 +301,12 @@ export async function runGeneralPipeline(
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const pipelineLog: PipelineLog = [];
 
-  // Phase 1: Frame
+  // Phase 1: Define
   onEvent({
     event: "phase",
     phase: "frame",
     status: "running",
-    label: "Understanding the workflow and framing the problem",
+    label: "Define — Clarifying the problem and success criteria",
   });
 
   const phase1Raw = await callClaude(
@@ -254,38 +316,55 @@ export async function runGeneralPipeline(
   const frame = JSON.parse(extractJSON(phase1Raw)) as FrameOutput;
 
   onEvent({ event: "phase", phase: "frame", status: "done", summary: frame.bottomLine });
-  pipelineLog.push({ phase: "frame", label: "Understanding the workflow and framing the problem", summary: frame.bottomLine });
+  pipelineLog.push({ phase: "frame", label: "Define — Clarifying the problem and success criteria", summary: frame.bottomLine });
 
-  // Phase 2: Analyze
+  // Phase 2: Measure
   onEvent({
     event: "phase",
-    phase: "analyze",
+    phase: "measure",
     status: "running",
-    label: "Identifying root causes and failure mechanisms",
+    label: "Measure — Quantifying current state and performance gap",
   });
 
   const phase2Raw = await callClaude(
     client,
-    buildPhase2Prompt(brief, frame, processNote)
+    buildPhase2Prompt(brief, frame)
   );
-  const analyze = JSON.parse(extractJSON(phase2Raw)) as AnalyzeOutput;
+  const measure = JSON.parse(extractJSON(phase2Raw)) as MeasureOutput;
+
+  onEvent({ event: "phase", phase: "measure", status: "done", summary: measure.performanceGap });
+  pipelineLog.push({ phase: "measure", label: "Measure — Quantifying current state and performance gap", summary: measure.performanceGap });
+
+  // Phase 3: Analyze
+  onEvent({
+    event: "phase",
+    phase: "analyze",
+    status: "running",
+    label: "Analyze — Diagnosing failure mechanisms and root causes",
+  });
+
+  const phase3Raw = await callClaude(
+    client,
+    buildPhase3Prompt(brief, frame, measure, processNote)
+  );
+  const analyze = JSON.parse(extractJSON(phase3Raw)) as AnalyzeOutput;
 
   onEvent({ event: "phase", phase: "analyze", status: "done", summary: analyze.criticalInsight });
-  pipelineLog.push({ phase: "analyze", label: "Identifying root causes and failure mechanisms", summary: analyze.criticalInsight });
+  pipelineLog.push({ phase: "analyze", label: "Analyze — Diagnosing failure mechanisms and root causes", summary: analyze.criticalInsight });
 
-  // Phase 3: Synthesize
+  // Phase 4: Improve & Control
   onEvent({
     event: "phase",
     phase: "synthesize",
     status: "running",
-    label: "Building recommendations, SOP, and control plan",
+    label: "Improve & Control — Building recommendations and control system",
   });
 
-  const phase3Raw = await callClaude(client, buildPhase3Prompt(brief, frame, analyze));
-  const generated = JSON.parse(extractJSON(phase3Raw)) as GeneratedOutputPayload;
+  const phase4Raw = await callClaude(client, buildPhase4Prompt(brief, frame, measure, analyze));
+  const generated = JSON.parse(extractJSON(phase4Raw)) as GeneratedOutputPayload;
 
   onEvent({ event: "phase", phase: "synthesize", status: "done", summary: "Report generated" });
-  pipelineLog.push({ phase: "synthesize", label: "Building recommendations, SOP, and control plan", summary: "Report generated" });
+  pipelineLog.push({ phase: "synthesize", label: "Improve & Control — Building recommendations and control system", summary: "Report generated" });
 
   onEvent({
     event: "complete",
