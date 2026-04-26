@@ -17,7 +17,7 @@ type WizardState = {
   problemType: string | null;
   specificAnswers: Record<string, string>;
   context: string;
-  uploadedFiles: Array<{ name: string; size: string }>;
+  uploadedFiles: Array<{ name: string; size: string; content: string; kind: "file" | "db" | "cloud" }>;
   // Editable seed text shown in the confirmation step. Null = use composed defaults.
   briefOverrides: Partial<IntakeBrief>;
 };
@@ -681,6 +681,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
     briefOverrides: {},
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<WizardState["uploadedFiles"][number] | null>(null);
 
   const totalSteps = 6;
   const problemList = answers.industry ? PROBLEMS_BY_INDUSTRY[answers.industry] : BUSINESS_PROBLEMS;
@@ -725,7 +726,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
       setAnswers((a) => ({
         ...a,
         context: a.context ? a.context + block : block.trimStart(),
-        uploadedFiles: [...a.uploadedFiles, { name: file.name, size: formatFileSize(file.size) }],
+        uploadedFiles: [...a.uploadedFiles, { name: file.name, size: formatFileSize(file.size), content: text, kind: "file" }],
       }));
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1163,7 +1164,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
               setAnswers((a) => ({
                 ...a,
                 context: a.context ? a.context + block : block.trimStart(),
-                uploadedFiles: [...a.uploadedFiles, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows` }],
+                uploadedFiles: [...a.uploadedFiles, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows`, content: tsv, kind: "db" }],
               }));
             }}
           />
@@ -1176,7 +1177,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
               setAnswers((a) => ({
                 ...a,
                 context: a.context ? a.context + block : block.trimStart(),
-                uploadedFiles: [...a.uploadedFiles, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows` }],
+                uploadedFiles: [...a.uploadedFiles, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows`, content: text, kind: "cloud" }],
               }));
             }}
           />
@@ -1206,10 +1207,17 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
               {answers.uploadedFiles.map((f) => (
                 <div
                   key={f.name}
-                  className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink"
+                  className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink transition hover:border-accent hover:bg-accent/5"
                 >
-                  <span>📄 {f.name}</span>
-                  <span className="text-ink-muted">{f.size}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFile(f)}
+                    className="flex items-center gap-2 text-ink hover:text-accent"
+                    aria-label={`Preview ${f.name}`}
+                  >
+                    <span>📄 {f.name}</span>
+                    <span className="text-ink-muted">{f.size}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleRemoveFile(f.name)}
@@ -1267,6 +1275,39 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
             </button>
           </div>
         </WizardStep>
+      )}
+
+      {/* File preview modal */}
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-canvas shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+              <div className="flex min-w-0 flex-col">
+                <p className="truncate text-[14px] font-semibold text-ink">{previewFile.name}</p>
+                <p className="text-[11px] text-ink-muted">
+                  {previewFile.kind === "db" ? "Database query" : previewFile.kind === "cloud" ? "Cloud file" : "Uploaded file"} · {previewFile.size}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewFile(null)}
+                aria-label="Close preview"
+                className="shrink-0 rounded-md px-2 py-1 text-[18px] leading-none text-ink-muted transition hover:bg-surface hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto whitespace-pre-wrap break-words bg-surface px-5 py-4 font-mono text-[12px] leading-relaxed text-ink">
+              {previewFile.content || "(empty)"}
+            </pre>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -9,9 +9,11 @@ import { CloudFileConnector } from "./CloudFileConnector";
 // Pull embedded blocks (FILE and DB QUERY) out of a process note so we can
 // show chips for files that came in pre-attached (e.g. from a preset case)
 // or via the DB / cloud connectors. Counts data rows for CSV-shaped content.
-function extractEmbeddedFiles(note: string): Array<{ name: string; size: string }> {
+type EmbeddedFile = { name: string; size: string; content: string; kind: "file" | "db" };
+
+function extractEmbeddedFiles(note: string): EmbeddedFile[] {
   if (!note) return [];
-  const out: Array<{ name: string; size: string }> = [];
+  const out: EmbeddedFile[] = [];
 
   // FILE blocks: `--- FILE: name ---\n...\n--- END: name ---`
   const fileRe = /--- FILE: ([^\n]+?) ---\n([\s\S]*?)\n--- END: \1 ---/g;
@@ -32,11 +34,11 @@ function extractEmbeddedFiles(note: string): Array<{ name: string; size: string 
       const bytes = new Blob([body]).size;
       size = bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
     }
-    out.push({ name, size });
+    out.push({ name, size, content: body, kind: "file" });
   }
 
   // DB QUERY blocks: `--- DB QUERY: label (N rows) ---\n...\n--- END DB QUERY ---`
-  const dbRe = /--- DB QUERY: ([^\n]+?) ---\n[\s\S]*?\n--- END DB QUERY ---/g;
+  const dbRe = /--- DB QUERY: ([^\n]+?) ---\n([\s\S]*?)\n--- END DB QUERY ---/g;
   while ((m = dbRe.exec(note)) !== null) {
     const rawName = m[1].trim();
     const nameMatch = rawName.match(/^(.*?)(?:\s*\((\d+)\s*rows\))?$/);
@@ -45,6 +47,8 @@ function extractEmbeddedFiles(note: string): Array<{ name: string; size: string 
     out.push({
       name: `DB: ${label.slice(0, 40)}`,
       size: rows !== null ? `${rows} rows` : "",
+      content: m[2],
+      kind: "db",
     });
   }
 
@@ -69,9 +73,10 @@ export function IntakeBriefEditor({
   onClose,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: string }>>(() =>
+  const [uploadedFiles, setUploadedFiles] = useState<EmbeddedFile[]>(() =>
     extractEmbeddedFiles(processNote)
   );
+  const [previewFile, setPreviewFile] = useState<EmbeddedFile | null>(null);
 
   // If a preset case (or any external loader) replaces the process note with
   // one that already contains `--- FILE: ... ---` blocks, surface those as
@@ -95,12 +100,12 @@ export function IntakeBriefEditor({
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     let current = processNote;
-    const newMeta: Array<{ name: string; size: string }> = [];
+    const newMeta: EmbeddedFile[] = [];
     for (const file of files) {
       const text = await file.text();
       const block = `\n\n--- FILE: ${file.name} ---\n${text}\n--- END: ${file.name} ---`;
       current = current ? current + block : block.trimStart();
-      newMeta.push({ name: file.name, size: formatFileSize(file.size) });
+      newMeta.push({ name: file.name, size: formatFileSize(file.size), content: text, kind: "file" });
     }
     onProcessNoteChange(current);
     setUploadedFiles((prev) => [...prev, ...newMeta]);
@@ -326,7 +331,7 @@ export function IntakeBriefEditor({
             const block = `\n\n--- DB QUERY: ${label} (${rowCount} rows) ---\n${tsv}\n--- END DB QUERY ---`;
             const next = processNote ? processNote + block : block.trimStart();
             onProcessNoteChange(next);
-            setUploadedFiles((prev) => [...prev, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows` }]);
+            setUploadedFiles((prev) => [...prev, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows`, content: tsv, kind: "db" }]);
           }}
         />
 
@@ -338,7 +343,7 @@ export function IntakeBriefEditor({
               const block = `\n\n--- FILE: ${label} (${rowCount} rows) ---\n${text}\n--- END: ${label} ---`;
               const next = processNote ? processNote + block : block.trimStart();
               onProcessNoteChange(next);
-              setUploadedFiles((prev) => [...prev, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows` }]);
+              setUploadedFiles((prev) => [...prev, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows`, content: text, kind: "file" }]);
             }}
           />
         </div>
@@ -369,10 +374,17 @@ export function IntakeBriefEditor({
             {uploadedFiles.map((f) => (
               <div
                 key={f.name}
-                className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink"
+                className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink transition hover:border-accent hover:bg-accent/5"
               >
-                <span>📄 {f.name}</span>
-                <span className="text-ink-muted">{f.size}</span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(f)}
+                  className="flex items-center gap-2 text-ink hover:text-accent"
+                  aria-label={`Preview ${f.name}`}
+                >
+                  <span>📄 {f.name}</span>
+                  <span className="text-ink-muted">{f.size}</span>
+                </button>
                 {!disabled && (
                   <button
                     type="button"
@@ -420,6 +432,38 @@ export function IntakeBriefEditor({
           />
         </div>
       </div>
+
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-canvas shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+              <div className="flex min-w-0 flex-col">
+                <p className="truncate text-[14px] font-semibold text-ink">{previewFile.name}</p>
+                <p className="text-[11px] text-ink-muted">
+                  {previewFile.kind === "db" ? "Database query" : "File"} · {previewFile.size}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewFile(null)}
+                aria-label="Close preview"
+                className="shrink-0 rounded-md px-2 py-1 text-[18px] leading-none text-ink-muted transition hover:bg-surface hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto whitespace-pre-wrap break-words bg-surface px-5 py-4 font-mono text-[12px] leading-relaxed text-ink">
+              {previewFile.content || "(empty)"}
+            </pre>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
