@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 import { EXAMPLE_CASES } from "@/lib/exampleCases";
 import { DatabaseConnector } from "./DatabaseConnector";
+import { CloudFileConnector } from "./CloudFileConnector";
 
 type Props = {
   brief: IntakeBrief;
@@ -11,6 +12,7 @@ type Props = {
   onBriefChange: (next: IntakeBrief) => void;
   onProcessNoteChange: (next: string) => void;
   disabled?: boolean;
+  onClose?: () => void;
 };
 
 export function IntakeBriefEditor({
@@ -19,6 +21,7 @@ export function IntakeBriefEditor({
   onBriefChange,
   onProcessNoteChange,
   disabled,
+  onClose,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: string }>>([]);
@@ -64,7 +67,6 @@ export function IntakeBriefEditor({
   }
 
   const stagesStr = brief.currentStages.join(", ");
-  const evidenceStr = brief.availableEvidence.join(", ");
 
   return (
     <section
@@ -106,6 +108,16 @@ export function IntakeBriefEditor({
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
             Custom case
           </span>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink-muted transition hover:text-ink hover:bg-canvas"
+              title="Hide intake brief"
+            >
+              ↑
+            </button>
+          )}
         </div>
       </div>
 
@@ -132,7 +144,17 @@ export function IntakeBriefEditor({
           className="md:col-span-2"
           rows={2}
           disabled={disabled}
-          placeholder="What is going wrong? Where are things breaking down? Be specific."
+          placeholder="What is broken? Describe the gap between what should happen and what actually happens."
+        />
+
+        <TextArea
+          label="Biggest day-to-day frustration"
+          value={brief.biggestFrustration}
+          onChange={(v) => set("biggestFrustration", v)}
+          className="md:col-span-2"
+          rows={2}
+          disabled={disabled}
+          placeholder="What does this look like on a Tuesday afternoon? The specific moment, behavior, or symptom that makes the team groan."
         />
 
         <TextArea
@@ -142,17 +164,36 @@ export function IntakeBriefEditor({
           className="md:col-span-2"
           rows={2}
           disabled={disabled}
-          placeholder="How will you know the problem is fixed? What is the measurable outcome?"
+          placeholder="How will you measure success in numbers? e.g. 'Conversion above 60%', 'On-time delivery > 90%'."
         />
 
         <TextArea
-          label="Key constraint or SLA"
-          value={brief.slaConstraint}
-          onChange={(v) => set("slaConstraint", v)}
+          label="Service-level commitment / SLA"
+          value={brief.slaText}
+          onChange={(v) => set("slaText", v)}
           className="md:col-span-2"
           rows={2}
           disabled={disabled}
           placeholder="e.g. P1 issues must be resolved within 4 hours. Contracts must close within 14 days."
+        />
+
+        <TextField
+          label="SLA threshold (hours, optional)"
+          value={brief.slaThresholdHours == null ? "" : String(brief.slaThresholdHours)}
+          onChange={(v) => {
+            const n = parseFloat(v);
+            set("slaThresholdHours", Number.isFinite(n) ? n : null);
+          }}
+          disabled={disabled}
+          placeholder="e.g. 4"
+        />
+
+        <TextField
+          label="Volume per month"
+          value={brief.volumePerMonth}
+          onChange={(v) => set("volumePerMonth", v)}
+          disabled={disabled}
+          placeholder="e.g. ~120 leads per month, ~600 tickets per month"
         />
 
         <TextField
@@ -187,28 +228,31 @@ export function IntakeBriefEditor({
           placeholder="Where do you think the process is breaking down most?"
         />
 
-        <TextArea
-          label="Biggest day-to-day frustration"
-          value={brief.biggestFrustration}
-          onChange={(v) => set("biggestFrustration", v)}
-          className="md:col-span-2"
-          rows={2}
+        <TextField
+          label="Value per item (optional)"
+          value={brief.valuePerItem}
+          onChange={(v) => set("valuePerItem", v)}
           disabled={disabled}
-          placeholder="What makes this problem visible and painful on a daily basis?"
+          placeholder="e.g. ~$8,000 per closed deal, ~$320 per ticket"
         />
 
         <TextField
-          label="Available data / evidence (comma-separated)"
-          value={evidenceStr}
-          onChange={(v) =>
-            set(
-              "availableEvidence",
-              v.split(",").map((s) => s.trim()).filter(Boolean)
-            )
-          }
+          label="Current tooling"
+          value={brief.currentTooling}
+          onChange={(v) => set("currentTooling", v)}
           className="md:col-span-2"
           disabled={disabled}
-          placeholder="e.g. Zendesk export, agent workload report, CSAT survey data"
+          placeholder="e.g. Salesforce CRM, Google Sheets, Zendesk, custom tool, none"
+        />
+
+        <TextArea
+          label="What's been tried before? (optional)"
+          value={brief.priorAttempts}
+          onChange={(v) => set("priorAttempts", v)}
+          className="md:col-span-2"
+          rows={2}
+          disabled={disabled}
+          placeholder="Previous attempts. Helps the report avoid re-recommending what failed."
         />
       </div>
 
@@ -230,6 +274,19 @@ export function IntakeBriefEditor({
             setUploadedFiles((prev) => [...prev, { name: `DB: ${label.slice(0, 40)}`, size: `${rowCount} rows` }]);
           }}
         />
+
+        {/* Cloud file (Google Drive / SharePoint / direct URL) */}
+        <div className="mt-3">
+          <CloudFileConnector
+            disabled={disabled}
+            onData={(label, text, rowCount) => {
+              const block = `\n\n--- FILE: ${label} (${rowCount} rows) ---\n${text}\n--- END: ${label} ---`;
+              const next = processNote ? processNote + block : block.trimStart();
+              onProcessNoteChange(next);
+              setUploadedFiles((prev) => [...prev, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows` }]);
+            }}
+          />
+        </div>
 
         {/* Upload zone */}
         <div className={[

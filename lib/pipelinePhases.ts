@@ -1,8 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+﻿import Anthropic from "@anthropic-ai/sdk";
 import type { PipelineAnalysis } from "./analyzePipeline";
 import type { IntakeBrief } from "./intakeBrief";
 import type { GeneratedOutputPayload } from "./outputTypes";
 import { WORKFLOW_LABEL } from "./workflow";
+import { formatOrgContext } from "./intakeContext";
 
 // ─── Output types for each phase ────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export type PipelineEvent =
       analysis?: PipelineAnalysis;
       generated: GeneratedOutputPayload;
       pipelineLog: PipelineLog;
-      usedFallback: false;
+      usedFallback: boolean;
     }
   | { event: "error"; message: string };
 
@@ -62,7 +63,7 @@ export type PipelineLog = Array<{
 
 const MODEL = "claude-opus-4-7";
 const SYSTEM_PROMPT =
-  "You are a RevOps and B2B sales operations specialist with deep experience diagnosing lead pipeline failures at mid-market SaaS companies. Industry context you carry: the average B2B company takes 47+ hours to respond to an inbound lead (Drift benchmark); leads contacted within 5 minutes are 21x more likely to qualify (InsideSales/HBR); after 24 hours without contact, qualification rates drop roughly 75%. Common structural failure modes you have seen repeatedly: SDR capacity overload, uneven round-robin routing, after-hours lead decay windows, purely discretionary follow-up without CRM enforcement, and lead scoring drift that trains reps to deprioritize inbound. Output ONLY valid JSON — no markdown, no prose, no explanation.";
+  "You are a RevOps and B2B sales operations specialist with deep experience diagnosing lead pipeline failures at mid-market SaaS companies. Industry context you carry: the average B2B company takes 47+ hours to respond to an inbound lead (Drift benchmark); leads contacted within 5 minutes are 21x more likely to qualify (InsideSales/HBR); after 24 hours without contact, qualification rates drop roughly 75%. Common structural failure modes you have seen repeatedly: SDR capacity overload, uneven round-robin routing, after-hours lead decay windows, purely discretionary follow-up without CRM enforcement, and lead scoring drift that trains reps to deprioritize inbound. Output ONLY valid JSON , no markdown, no prose, no explanation.";
 
 function extractJSON(raw: string): string {
   let s = raw
@@ -112,17 +113,18 @@ function buildPhase1Prompt(
     )
     .join("\n");
 
+  const orgContext = formatOrgContext(brief);
   return `Business: ${brief.businessName}
 Workflow: ${WORKFLOW_LABEL}
-
+${orgContext ? `\n${orgContext}\n` : ""}
 INTAKE BRIEF
 - Pain point: ${brief.painPoint}
 - Biggest frustration: ${brief.biggestFrustration}
 - Suspected problem stage: ${brief.suspectedStage}
 - Success metric: ${brief.successMetric}
-- SLA constraint: ${brief.slaConstraint}
+- SLA constraint: ${brief.slaText}
 - Qualified lead definition: ${brief.qualifiedLeadDefinition}
-- Current stages: ${brief.currentStages.join(" → ")}
+- Current stages: ${brief.currentStages.join(" -> ")}
 
 PROCESS NOTE (intended workflow rules)
 ${processNote.trim()}
@@ -144,7 +146,7 @@ ${ownerLines}
 SOURCE BREAKDOWN
 ${sourceLines}
 
-TASK: Come in cold as a RevOps diagnostician. First, benchmark this pipeline against industry standards: B2B median response is 47h, top performers respond in <5 minutes (21x qualification lift), leads with no contact after 24h have ~75% lower qualification rates — compare those benchmarks against the metrics above and name where this pipeline sits on that spectrum. Second, assess whether this is an SDR capacity problem (too many leads per rep forces implicit triage) or a process enforcement problem (follow-up is purely discretionary). Third, confirm or deny the owner's hypotheses with the data. Surface anything the owner cannot see from inside the process.
+TASK: Come in cold as a RevOps diagnostician. First, benchmark this pipeline against industry standards: B2B median response is 47h, top performers respond in <5 minutes (21x qualification lift), leads with no contact after 24h have ~75% lower qualification rates , compare those benchmarks against the metrics above and name where this pipeline sits on that spectrum. Second, assess whether this is an SDR capacity problem (too many leads per rep forces implicit triage) or a process enforcement problem (follow-up is purely discretionary). Third, confirm or deny the owner's hypotheses with the data. Surface anything the owner cannot see from inside the process.
 
 Output a JSON object matching this exact schema:
 {
@@ -171,6 +173,7 @@ function buildPhase2Prompt(
     )
     .join("\n");
 
+  const orgContext = formatOrgContext(brief);
   return `PHASE 1 OUTPUT (framing)
 ${JSON.stringify(frame, null, 2)}
 
@@ -185,21 +188,22 @@ KEY CROSS-STATS
 CONTEXT
 - Biggest frustration: ${brief.biggestFrustration}
 - Suspected problem stage: ${brief.suspectedStage}
+${orgContext ? `\n${orgContext}` : ""}
 
-TASK: Reason like a RevOps consultant who has diagnosed this failure pattern at dozens of companies. Go beyond WHAT is broken to explain the behavioral and structural mechanisms driving it. The four most common causal chains in B2B lead pipelines are: (1) after-hours decay — leads arriving outside business hours sit in queue overnight, losing 60%+ of qualification probability by morning; (2) SDR capacity overload — too many leads per rep forces implicit triage, inbound leads lose to active pipeline urgency; (3) routing asymmetry — uneven round-robin loading means some reps are perpetually buried while others have slack; (4) no CRM enforcement — without timer fields or auto-escalation rules, follow-up is purely discretionary and deprioritized under any pressure. Identify which mechanisms are active in this pipeline and explain precisely how they interact and amplify each other.
+TASK: Reason like a RevOps consultant who has diagnosed this failure pattern at dozens of companies. Go beyond WHAT is broken to explain the behavioral and structural mechanisms driving it. The four most common causal chains in B2B lead pipelines are: (1) after-hours decay , leads arriving outside business hours sit in queue overnight, losing 60%+ of qualification probability by morning; (2) SDR capacity overload , too many leads per rep forces implicit triage, inbound leads lose to active pipeline urgency; (3) routing asymmetry , uneven round-robin loading means some reps are perpetually buried while others have slack; (4) no CRM enforcement , without timer fields or auto-escalation rules, follow-up is purely discretionary and deprioritized under any pressure. Identify which mechanisms are active in this pipeline and explain precisely how they interact and amplify each other.
 
 Output a JSON object matching this exact schema:
 {
   "rootCauses": [
     {
       "factor": "Name of the cause",
-      "mechanism": "The causal chain — why this factor leads to lost conversions, not just that it does.",
+      "mechanism": "The causal chain , why this factor leads to lost conversions, not just that it does.",
       "evidence": "Specific numbers and patterns from the data that prove this mechanism is real.",
       "interaction": "How this cause interacts with or amplifies other causes in the list."
     }
   ],
   "leakageNarrative": "3-5 sentences. Tell the story of how a lead enters this pipeline and where and why it silently dies. Be specific about the behavioral and process failures.",
-  "criticalInsight": "1 sentence. The single deepest insight from this analysis — something that reframes how the owner should think about the problem."
+  "criticalInsight": "1 sentence. The single deepest insight from this analysis , something that reframes how the owner should think about the problem."
 }`;
 }
 
@@ -211,11 +215,88 @@ function buildPhase3Prompt(
   frame: FrameOutput,
   analyze: AnalyzeOutput
 ): string {
+  const orgContext = formatOrgContext(brief);
+
+  // Programmatic template avoids embedded template expressions inside the JSON
+  // which confuse the model and cause malformed output.
+  const jsonTemplate = {
+    executiveSummary: {
+      headlineFinding: `Describe conversion problem using the ${analysis.conversionRate}% rate and the root cause`,
+      whyItMatters: "Business consequence in revenue or operational terms",
+      primaryCause: "Dominant driver with specific numbers from the data",
+      recommendedAction: "Single most important first change",
+      monitoringPlan: "Metric that will confirm the fix is working",
+    },
+    problemDefinition: {
+      workflow: WORKFLOW_LABEL,
+      businessProblem: "What the process should do vs what is happening",
+      affectedGroup: "Roles affected",
+      successMetric: "Conversion rate from new lead to booked meeting",
+      scope: "Lead intake through booked meeting only",
+    },
+    rootCauseAnalysis: {
+      topLeakagePoint: "Stage and behavioral pattern with most leakage",
+      rankedCauses: [
+        { rank: 1, factor: "factor name", finding: "Evidence with specific numbers" },
+        { rank: 2, factor: "factor name", finding: "Evidence" },
+        { rank: 3, factor: "factor name", finding: "Evidence" },
+      ],
+      supportingComparison: "Timely vs delayed response conversion rate comparison",
+      segmentInsight: "Most actionable owner or source segment finding",
+    },
+    recommendation: {
+      firstAction: "Exactly what changes and who does it",
+      whyThisFirst: "Why this has the highest expected return",
+      expectedEffect: "Expected improvement and when it becomes visible",
+      owner: "Role responsible",
+    },
+    workflowSOP: {
+      title: "Lead Intake Follow-Up Standard",
+      objective: "What this rule is designed to accomplish",
+      bullets: ["Rule 1", "Rule 2", "Rule 3", "Rule 4", "Rule 5"],
+      escalation: "What triggers escalation and to whom",
+      owner: "Pipeline manager or team lead",
+    },
+    monitoringReport: {
+      issue: "Operational problem identified",
+      fix: "Change recommended",
+      metrics: "Metric1; Metric2; Metric3",
+      thresholds: "Alert threshold for each metric",
+      owner: "Role who owns monitoring",
+      responsePlan: "What happens if metrics drift back",
+    },
+    controlDashboard: {
+      primaryMetricLabel: `Conversion Rate: ${analysis.conversionRate}%`,
+      secondaryMetricLabel: `Median First Response: ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h)`,
+      tertiaryMetricLabel: `Stalled Lead Rate: ${analysis.stalledLeadRate}%`,
+      segmentNeedingAttention: "Owner or source segment most needing attention",
+    },
+    alertRules: [
+      { trigger: "Lead not contacted within 4 hours of submission", action: "Assign to backup rep and notify team lead", severity: "critical" },
+      { trigger: "Lead stalled in Contacted for over 48 hours", action: "Auto-escalate to team lead for reassignment", severity: "warning" },
+      { trigger: "Weekly missed follow-up rate exceeds 20%", action: "Pull and review uncontacted lead list immediately", severity: "critical" },
+      { trigger: "Stalled lead rate exceeds 30%", action: "Block new lead intake until backlog is cleared", severity: "warning" },
+      { trigger: "Rep response time average exceeds 8 hours for 3 days", action: "Redistribute lead queue and investigate capacity", severity: "warning" },
+    ],
+    ownerBrief: {
+      problem: "Core operational failure in plain English",
+      moneyAtRisk: brief.valuePerItem
+        ? `Estimate using ${brief.valuePerItem} per lead`
+        : "Short dollar figure based on stalled pipeline",
+      actions: [
+        { action: "Most urgent change: active verb, names specific CRM field or rule", when: "this week", expectedLift: "Specific measurable outcome" },
+        { action: "Second priority: process adjustment or reporting change", when: "this month", expectedLift: "Specific measurable outcome" },
+        { action: "Structural fix: routing, coverage, or CRM automation", when: "this quarter", expectedLift: "Specific measurable outcome" },
+      ],
+      nextDecision: "Single concrete thing to do Monday morning naming the specific tool, person, or field",
+    },
+  };
+
   return `PHASE 1 OUTPUT (framing)
-${JSON.stringify(frame, null, 2)}
+${JSON.stringify(frame)}
 
 PHASE 2 OUTPUT (root cause analysis)
-${JSON.stringify(analyze, null, 2)}
+${JSON.stringify(analyze)}
 
 KEY METRICS
 - Business: ${brief.businessName}
@@ -226,102 +307,137 @@ KEY METRICS
 - Missed follow-up rate: ${analysis.missedFollowupRate}%
 - Conversion with timely response: ${analysis.conversionWithTimely}%
 - Conversion with delayed response: ${analysis.conversionWithDelayed}%
-- Conversion with missed follow-up: ${analysis.conversionMissedFollowup}%
-- Conversion without missed follow-up: ${analysis.conversionNoMissedFollowup}%
-
+${orgContext ? `\n${orgContext}\n` : ""}
 BRIEF GOALS
 - Pain point: ${brief.painPoint}
 - Success metric: ${brief.successMetric}
-- SLA: ${brief.slaConstraint}
+- SLA: ${brief.slaText}
 - Biggest frustration: ${brief.biggestFrustration}
+${brief.priorAttempts ? `- Previously tried (do not repeat): ${brief.priorAttempts}` : ""}
 
-TASK: Generate the full user-facing report as a RevOps expert who has diagnosed this exact failure mechanism. Every section must be grounded in the specific mechanisms from phases 1 and 2. Reference the industry benchmarks where they contextualize findings (47h industry median, 5-min 21x lift, 24h 75% qualification decay). Recommendations must name specific system-level controls — CRM automation rules, timer fields, auto-escalation triggers, coverage protocols — not generic guidance. Speak to this owner as someone who has fixed this exact problem before.
+RULES: Output ONLY valid JSON. No markdown. No prose. No em dashes. SOP bullets exactly 5 strings. alertRules exactly 5 objects with severity "warning" or "critical". ownerBrief.actions exactly 3 objects. rootCauseAnalysis.rankedCauses exactly 3 objects. Every value must be grounded in the phase outputs above.
 
-RULES:
-- Use exact metric numbers from KEY METRICS above. Reference the industry benchmarks you carry (47h median, 5-min 21x lift, 24h 75% decay) to contextualize findings.
-- SOP bullets must be exactly 5 strings. Each must describe a specific operational control: CRM automation triggers, SLA timer fields, assignment rules, escalation conditions, or after-hours coverage protocols. No generic guidance.
-- alertRules must be exactly 5 objects, each with severity "warning" or "critical" only. Each must be a specific RevOps monitoring rule referencing lead aging thresholds, SLA violations, stall rate spikes, or routing queue imbalance, specific enough to configure in a CRM or ops dashboard.
-- Do not use "AI", "DMAIC", "agentic", or academic jargon.
-- Do not use em dashes (—) anywhere in your output. Use commas, periods, or colons instead.
-- Recommendations must name specific system-level changes where relevant (CRM task automation, lead aging reports, auto-reassignment after inactivity threshold, round-robin rebalancing).
+Output ONLY valid JSON matching this exact structure:
+${JSON.stringify(jsonTemplate, null, 0)}
 
-Output a JSON object matching this EXACT schema:
-{
-  "executiveSummary": {
-    "headlineFinding": "1-2 sentences referencing the ${analysis.conversionRate}% conversion rate and the mechanism discovered in phase 2.",
-    "whyItMatters": "1-2 sentences on business/revenue consequence.",
-    "primaryCause": "1-2 sentences naming the dominant driver with specific numbers.",
-    "recommendedAction": "1 sentence — the single most important first change.",
-    "monitoringPlan": "1 sentence — what metric will confirm the fix is working."
-  },
-  "problemDefinition": {
-    "workflow": "${WORKFLOW_LABEL}",
-    "businessProblem": "75-100 words. What the process should do vs what it is doing.",
-    "affectedGroup": "The roles affected.",
-    "successMetric": "Conversion rate from new lead to booked meeting.",
-    "scope": "Lead intake through booked meeting only."
-  },
-  "rootCauseAnalysis": {
-    "topLeakagePoint": "1-2 sentences on the stage and behavioral pattern with most leakage.",
-    "rankedCauses": [
-      { "rank": 1, "factor": "factor name", "finding": "1-2 sentences with specific numbers." },
-      { "rank": 2, "factor": "factor name", "finding": "1-2 sentences." },
-      { "rank": 3, "factor": "factor name", "finding": "1-2 sentences." }
+Output nothing but the JSON object.`;
+}
+
+// ─── Phase 3 fallback ────────────────────────────────────────────────────────
+
+function buildPhase3Fallback(
+  brief: IntakeBrief,
+  analysis: PipelineAnalysis,
+  frame: FrameOutput,
+  analyze: AnalyzeOutput
+): GeneratedOutputPayload {
+  const causes = analyze.rootCauses ?? [];
+  const c1 = causes[0];
+  const c2 = causes[1];
+  const c3 = causes[2];
+
+  const moneyAtRisk = brief.valuePerItem
+    ? `${analysis.stalledLeads} stalled leads at ${brief.valuePerItem}`
+    : `${analysis.stalledLeads} stalled leads in pipeline`;
+
+  return {
+    executiveSummary: {
+      headlineFinding: frame.bottomLine,
+      whyItMatters: brief.painPoint,
+      primaryCause: analyze.criticalInsight,
+      recommendedAction: brief.currentTooling
+        ? `Add a 4-hour response rule in ${brief.currentTooling} that auto-escalates uncontacted leads.`
+        : "Add CRM enforcement: auto-escalate any lead uncontacted after 4 hours.",
+      monitoringPlan: "Track median first response time weekly; target under 4 hours.",
+    },
+    problemDefinition: {
+      workflow: WORKFLOW_LABEL,
+      businessProblem: frame.problemStatement,
+      affectedGroup: "Sales reps and pipeline manager",
+      successMetric: brief.successMetric,
+      scope: "Lead intake through booked meeting only.",
+    },
+    rootCauseAnalysis: {
+      topLeakagePoint: analyze.leakageNarrative,
+      rankedCauses: [
+        { rank: 1, factor: c1?.factor ?? "Delayed initial response", finding: c1?.evidence ?? c1?.mechanism ?? "Confirmed by response-time data" },
+        { rank: 2, factor: c2?.factor ?? "Missed follow-up", finding: c2?.evidence ?? c2?.mechanism ?? "Confirmed by follow-up rate data" },
+        { rank: 3, factor: c3?.factor ?? "No CRM enforcement", finding: c3?.evidence ?? c3?.mechanism ?? "No automation rule found in process note" },
+      ],
+      supportingComparison: `Timely response conversion: ${analysis.conversionWithTimely}% vs delayed: ${analysis.conversionWithDelayed}%`,
+      segmentInsight: analyze.criticalInsight,
+    },
+    recommendation: {
+      firstAction: brief.currentTooling
+        ? `In ${brief.currentTooling}, create an automation rule: if lead is uncontacted after 4 hours, assign a task to the team lead.`
+        : "Create a CRM automation rule that assigns a high-priority task if a lead is uncontacted after 4 hours.",
+      whyThisFirst: analyze.criticalInsight,
+      expectedEffect: `Should lift conversion from ${analysis.conversionRate}% toward ${analysis.conversionWithTimely}% as timely-response rate improves.`,
+      owner: "Pipeline manager",
+    },
+    workflowSOP: {
+      title: "Lead Intake Follow-Up Standard",
+      objective: "Ensure every inbound lead receives first contact within 4 hours and a logged next step within 24 hours.",
+      bullets: [
+        "All new leads trigger an automatic 4-hour follow-up task assigned to the rep.",
+        brief.currentTooling
+          ? `In ${brief.currentTooling}, set a lead aging field: any lead in New status past 4 hours is flagged on the team lead dashboard.`
+          : "Set a lead aging field: any lead in New status past 4 hours is flagged for the team lead.",
+        "After-hours leads are assigned to the first available rep next morning with a 2-hour priority task.",
+        "Every lead in Contacted with no logged activity for 48 hours is auto-reassigned to backup rep.",
+        "Weekly review: team lead pulls all leads with response >4h and missed follow-up; root causes logged.",
+      ],
+      escalation: "Any lead uncontacted after 8 hours escalates to team lead with an automated alert.",
+      owner: "Pipeline manager",
+    },
+    monitoringReport: {
+      issue: brief.painPoint,
+      fix: "CRM automation rules enforcing 4-hour response and 48-hour follow-up with auto-escalation.",
+      metrics: "Conversion rate; Median first response time; Missed follow-up rate",
+      thresholds: "Alert: response >4h on any lead; Missed follow-up rate >20%; Stalled rate >30%",
+      owner: "Pipeline manager",
+      responsePlan: "If median response time rises above 4h for 3 consecutive days, pull lead distribution report and rebalance the queue.",
+    },
+    controlDashboard: {
+      primaryMetricLabel: `Conversion Rate: ${analysis.conversionRate}%`,
+      secondaryMetricLabel: `Median First Response: ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h)`,
+      tertiaryMetricLabel: `Stalled Lead Rate: ${analysis.stalledLeadRate}%`,
+      segmentNeedingAttention: "Owner with lowest conversion rate or highest stall rate",
+    },
+    alertRules: [
+      { trigger: "Lead uncontacted after 4 hours", action: "Assign priority task to team lead and send alert", severity: "critical" },
+      { trigger: "Lead stalled in Contacted for over 48 hours", action: "Auto-reassign to backup rep", severity: "warning" },
+      { trigger: "Weekly missed follow-up rate exceeds 20%", action: "Pull and review uncontacted lead list", severity: "critical" },
+      { trigger: "Stalled lead rate exceeds 30%", action: "Pause new lead intake review and rebalance queue", severity: "warning" },
+      { trigger: "Rep average response time exceeds 8 hours for 3 days", action: "Redistribute lead queue and investigate capacity", severity: "warning" },
     ],
-    "supportingComparison": "1-2 sentences comparing timely vs delayed response conversion rates.",
-    "segmentInsight": "1-2 sentences on the most actionable owner or source segment finding."
-  },
-  "recommendation": {
-    "firstAction": "2-3 sentences. Specific and actionable — what exactly changes.",
-    "whyThisFirst": "1-2 sentences on why this has the highest expected impact.",
-    "expectedEffect": "1-2 sentences on expected improvement and when it becomes visible.",
-    "owner": "The role responsible."
-  },
-  "workflowSOP": {
-    "title": "Lead Intake Follow-Up Standard",
-    "objective": "1 sentence — what this rule is designed to accomplish.",
-    "bullets": [
-      "Rule 1: specific actionable rule",
-      "Rule 2: specific actionable rule",
-      "Rule 3: specific actionable rule",
-      "Rule 4: specific actionable rule",
-      "Rule 5: specific actionable rule"
-    ],
-    "escalation": "1 sentence — what triggers escalation and to whom.",
-    "owner": "Pipeline manager or team lead."
-  },
-  "monitoringReport": {
-    "issue": "1-2 sentences — the operational problem identified.",
-    "fix": "1-2 sentences — the change recommended.",
-    "metrics": "The 3 metrics to monitor going forward.",
-    "thresholds": "Specific alert thresholds for each metric.",
-    "owner": "The role who owns monitoring.",
-    "responsePlan": "2-3 sentences on what happens if metrics drift back."
-  },
-  "controlDashboard": {
-    "primaryMetricLabel": "Conversion Rate: ${analysis.conversionRate}%",
-    "secondaryMetricLabel": "Median First Response: ${analysis.medianFirstResponseHours.toFixed(1)}h (SLA: 4h)",
-    "tertiaryMetricLabel": "Stalled Lead Rate: ${analysis.stalledLeadRate}%",
-    "segmentNeedingAttention": "The one owner or source segment most in need of attention right now."
-  },
-  "alertRules": [
-    { "trigger": "specific condition", "action": "what should happen", "severity": "warning" },
-    { "trigger": "specific condition", "action": "what should happen", "severity": "critical" },
-    { "trigger": "specific condition", "action": "what should happen", "severity": "warning" },
-    { "trigger": "specific condition", "action": "what should happen", "severity": "critical" },
-    { "trigger": "specific condition", "action": "what should happen", "severity": "warning" }
-  ],
-  "ownerBrief": {
-    "problem": "1 sentence — the core operational failure in plain English that a non-technical owner can act on. No DMAIC, no jargon.",
-    "moneyAtRisk": "Short dollar figure only — e.g. '$286k at risk' or '$180k in stalled pipeline'. Maximum 8 words. Do not write a sentence or paragraph.";
-    "actions": [
-      { "action": "Most urgent change — active verb, names specific CRM field, rule, or role. No more than 15 words.", "when": "this week", "expectedLift": "Specific measurable outcome, e.g. '+8pp conversion' or 'Eliminate 40% of stalls'" },
-      { "action": "Second priority change — can involve a process adjustment or reporting change.", "when": "this month", "expectedLift": "Specific measurable outcome" },
-      { "action": "Longer-term structural fix — routing, coverage, or CRM automation improvement.", "when": "this quarter", "expectedLift": "Specific measurable outcome" }
-    ],
-    "nextDecision": "1 sentence. The single most concrete thing to do Monday morning. Names the specific tool, person, meeting, or CRM field — not a vague directive."
-  }
-}`;
+    ownerBrief: {
+      problem: frame.bottomLine,
+      moneyAtRisk: moneyAtRisk,
+      actions: [
+        {
+          action: brief.currentTooling
+            ? `Add 4-hour response rule in ${brief.currentTooling} with auto-escalation to team lead.`
+            : "Add 4-hour CRM rule: auto-escalate uncontacted leads to team lead.",
+          when: "this week",
+          expectedLift: `Reduce missed follow-up rate from ${analysis.missedFollowupRate}% toward 0%.`,
+        },
+        {
+          action: "Build a weekly lead aging report showing every lead with response >4h and owner.",
+          when: "this month",
+          expectedLift: `Lift conversion from ${analysis.conversionRate}% toward ${analysis.conversionWithTimely}%.`,
+        },
+        {
+          action: "Implement round-robin load balancing and after-hours coverage protocol.",
+          when: "this quarter",
+          expectedLift: "Eliminate response gaps from rep overload and after-hours decay.",
+        },
+      ],
+      nextDecision: brief.currentTooling
+        ? `Monday morning: open ${brief.currentTooling} and create the 4-hour response automation rule before the first rep logs in.`
+        : "Monday morning: schedule a 30-minute session with the team lead to configure the 4-hour CRM automation rule.",
+    },
+  };
 }
 
 // ─── Pipeline runner ─────────────────────────────────────────────────────────
@@ -398,7 +514,15 @@ export async function runPipeline(
 
   const phase3Prompt = buildPhase3Prompt(brief, analysis, frame, analyze);
   const phase3Raw = await callClaude(client, phase3Prompt, 8192);
-  const generated = JSON.parse(extractJSON(phase3Raw)) as GeneratedOutputPayload;
+  let generated: GeneratedOutputPayload;
+  let usedFallback = false;
+  try {
+    generated = JSON.parse(extractJSON(phase3Raw)) as GeneratedOutputPayload;
+  } catch (e) {
+    console.warn("Phase 3 JSON parsing failed, using fallback:", e);
+    generated = buildPhase3Fallback(brief, analysis, frame, analyze);
+    usedFallback = true;
+  }
 
   onEvent({
     event: "phase",
@@ -419,6 +543,6 @@ export async function runPipeline(
     analysis,
     generated,
     pipelineLog,
-    usedFallback: false,
+    usedFallback,
   });
 }

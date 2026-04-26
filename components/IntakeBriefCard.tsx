@@ -2,6 +2,7 @@ import type { IntakeBrief } from "@/lib/intakeBrief";
 
 type Props = {
   brief: IntakeBrief;
+  onClose?: () => void;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -13,7 +14,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function IntakeBriefCard({ brief }: Props) {
+export function IntakeBriefCard({ brief, onClose }: Props) {
   return (
     <section
       aria-labelledby="intake-brief-heading"
@@ -32,10 +33,22 @@ export function IntakeBriefCard({ brief }: Props) {
             Business context that grounds the analysis.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-[11px] font-medium text-ink-muted">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent/50" />
-          Pre-filled · demo mode
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-[11px] font-medium text-ink-muted">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent/50" />
+            Pre-filled · demo mode
+          </span>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink-muted transition hover:text-ink hover:bg-canvas"
+              title="Hide intake brief"
+            >
+              ↑
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Fields grid */}
@@ -44,7 +57,7 @@ export function IntakeBriefCard({ brief }: Props) {
         <Field label="Workflow">{brief.workflowName}</Field>
         <Field label="Pain point">{brief.painPoint}</Field>
         <Field label="Success metric">{brief.successMetric}</Field>
-        <Field label="SLA / key constraint">{brief.slaConstraint}</Field>
+        <Field label="SLA / key constraint">{brief.slaText}</Field>
         <Field label="Qualified lead">{brief.qualifiedLeadDefinition}</Field>
 
         <Field label="Current stages">
@@ -66,16 +79,18 @@ export function IntakeBriefCard({ brief }: Props) {
 
         <Field label="Biggest frustration">{brief.biggestFrustration}</Field>
 
-        <Field label="Available evidence">
-          <ul className="flex flex-col gap-1 mt-0.5">
-            {brief.availableEvidence.map((e) => (
-              <li key={e} className="flex items-start gap-2 text-sm">
-                <span aria-hidden className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent/60" />
-                {e}
-              </li>
-            ))}
-          </ul>
-        </Field>
+        {brief.volumePerMonth && (
+          <Field label="Volume per month">{brief.volumePerMonth}</Field>
+        )}
+        {brief.valuePerItem && (
+          <Field label="Value per item">{brief.valuePerItem}</Field>
+        )}
+        {brief.currentTooling && (
+          <Field label="Current tooling">{brief.currentTooling}</Field>
+        )}
+        {brief.priorAttempts && (
+          <Field label="Prior attempts">{brief.priorAttempts}</Field>
+        )}
       </dl>
     </section>
   );

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
-import type { IntakeBrief } from "@/lib/intakeBrief";
+import React, { useState, useRef } from "react";
+import type { IntakeBrief, Industry, TeamSize } from "@/lib/intakeBrief";
 import { DatabaseConnector } from "./DatabaseConnector";
+import { CloudFileConnector } from "./CloudFileConnector";
+import { DataPrivacyDisclaimer } from "./DataPrivacyDisclaimer";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export type Industry = "government" | "business" | "education" | "healthcare" | "other";
-type TeamSize = "solo" | "small" | "midsize" | "large";
+export type { Industry } from "@/lib/intakeBrief";
 
 type WizardState = {
   industry: Industry | null;
@@ -17,6 +18,8 @@ type WizardState = {
   specificAnswers: Record<string, string>;
   context: string;
   uploadedFiles: Array<{ name: string; size: string }>;
+  // Editable seed text shown in the confirmation step. Null = use composed defaults.
+  briefOverrides: Partial<IntakeBrief>;
 };
 
 // ─── Industry config ────────────────────────────────────────────────────────────
@@ -54,12 +57,27 @@ const SIZES: Array<{ id: TeamSize; label: string; desc: string }> = [
 
 // ─── Problem config ─────────────────────────────────────────────────────────────
 
+/**
+ * `mapsTo` declares which IntakeBrief field this question's answer
+ * routes into. If null, the answer only lands in processNote
+ * (legacy behavior). Brief fields supported here are limited to
+ * the structured ones the wizard knows how to fill.
+ */
+type QuestionMapsTo =
+  | "volumePerMonth"
+  | "currentTooling"
+  | "slaText"
+  | "priorAttempts"
+  | "suspectedStage"
+  | null;
+
 type Question = {
   id: string;
   question: string;
   type: "cards" | "text";
   options?: string[];
   placeholder?: string;
+  mapsTo?: QuestionMapsTo;
 };
 
 type ProblemConfig = {
@@ -76,6 +94,8 @@ type ProblemConfig = {
   suspectedStage: string;
   frustration: string;
   questions: Question[];
+  /** Which benchmark library category to route to. Falls back to keyword matching if absent. */
+  benchmarkCategoryId?: string;
 };
 
 // ── Business problems ──────────────────────────────────────────────────────────
@@ -493,15 +513,83 @@ const PROBLEMS_BY_INDUSTRY: Record<Industry, ProblemConfig[]> = {
   other:      BUSINESS_PROBLEMS,
 };
 
+// ── Problem id → benchmark category id ────────────────────────────────────────
+// Centralized so we don't have to thread benchmarkCategoryId through every
+// problem config. Anything unmapped falls back to keyword matching.
+const PROBLEM_BENCHMARK_MAP: Record<string, string> = {
+  // Business
+  sales: "sales-lead-conversion",
+  "onboarding-customer": "customer-onboarding",
+  support: "support-ticket-resolution",
+  approvals: "contracts-approvals",
+  "onboarding-employee": "employee-onboarding",
+  operations: "operations-fulfillment",
+  compliance: "compliance-reporting",
+  // Government
+  procurement: "contracts-approvals",
+  permitting: "permitting",
+  // Education
+  enrollment: "student-enrollment",
+  accreditation: "compliance-reporting",
+  // Healthcare
+  "patient-intake": "patient-intake",
+  "prior-auth": "claims-billing",
+  claims: "claims-billing",
+  "staff-onboarding": "employee-onboarding",
+  "healthcare-compliance": "compliance-reporting",
+};
+
+// ── Heuristic question-id → IntakeBrief field mapping ─────────────────────────
+// Today's question ids aren't standardized across problems (e.g. "tracking" vs
+// "routing" both describe tooling). Rather than rewrite every ProblemConfig we
+// route based on common id patterns. Explicit `mapsTo` on a Question always wins.
+function inferMapsTo(questionId: string): QuestionMapsTo {
+  const id = questionId.toLowerCase();
+  if (
+    id === "tracking" ||
+    id === "routing" ||
+    id === "ownership" ||
+    id === "tooling"
+  ) {
+    return "currentTooling";
+  }
+  if (
+    id === "response" ||
+    id === "sla" ||
+    id === "turnaround" ||
+    id === "closetime" ||
+    id === "cycletime" ||
+    id === "credentialtime" ||
+    id === "ramptime" ||
+    id === "duration" ||
+    id === "waittime" ||
+    id === "arresolution"
+  ) {
+    return "slaText";
+  }
+  if (
+    id === "ontime" ||
+    id === "firstpass" ||
+    id === "frequency" ||
+    id === "missedDeadlines" ||
+    id === "applications" ||
+    id === "volume"
+  ) {
+    return "volumePerMonth";
+  }
+  return null;
+}
+
 // ─── Brief builder ─────────────────────────────────────────────────────────────
 
-function buildBriefFromWizard(
+export function buildBriefFromWizard(
   industry: Industry,
   subIndustry: string | null,
   size: TeamSize,
   problemType: string,
   specificAnswers: Record<string, string>,
-  context: string
+  context: string,
+  overrides: Partial<IntakeBrief> = {}
 ): { brief: IntakeBrief; processNote: string } {
   const allProblems = [...BUSINESS_PROBLEMS, ...GOVERNMENT_PROBLEMS, ...EDUCATION_PROBLEMS, ...HEALTHCARE_PROBLEMS];
   const config = allProblems.find((p) => p.id === problemType) ?? BUSINESS_PROBLEMS.find((p) => p.id === "other")!;
@@ -516,18 +604,43 @@ function buildBriefFromWizard(
   const ans1 = specificAnswers[q[1]?.id] ?? "";
   const ans2 = specificAnswers[q[2]?.id] ?? "";
 
-  const brief: IntakeBrief = {
+  // Route answers to brief fields based on `mapsTo` (explicit) or id heuristic.
+  const fieldFromAnswers: Partial<Record<QuestionMapsTo & string, string>> = {};
+  for (const question of q) {
+    const target = question.mapsTo ?? inferMapsTo(question.id);
+    if (!target) continue;
+    const ans = specificAnswers[question.id];
+    if (!ans) continue;
+    if (!fieldFromAnswers[target]) fieldFromAnswers[target] = ans;
+  }
+
+  const benchmarkCategoryId =
+    config.benchmarkCategoryId ?? PROBLEM_BENCHMARK_MAP[config.id] ?? null;
+
+  const baseBrief: IntakeBrief = {
     businessName: subLabel ? `${subLabel} · ${sizeLabel}` : `${industryLabel} · ${sizeLabel}`,
     workflowName: isOther && ans0 ? ans0 : config.workflowName,
+    industry,
+    subIndustry: subIndustry,
+    teamSize: size,
     painPoint: isOther ? `${ans0}. Goal: ${ans1}` : config.painPoint,
-    successMetric: isOther ? ans1 || config.successMetric : config.successMetric,
-    slaConstraint: config.slaConstraint,
+    biggestFrustration: isOther ? ans2 : (ans2 || ans1 || config.frustration),
+    successMetric: isOther ? (ans1 || config.successMetric) : config.successMetric,
+    slaText: fieldFromAnswers.slaText
+      ? `${config.slaConstraint} (Reported: ${fieldFromAnswers.slaText})`
+      : config.slaConstraint,
+    slaThresholdHours: null,
     currentStages: config.stages,
     qualifiedLeadDefinition: config.qualifiedDef,
     suspectedStage: isOther ? ans2 : (ans0 || config.suspectedStage),
-    biggestFrustration: isOther ? ans2 : (ans2 || ans1 || config.frustration),
-    availableEvidence: [],
+    volumePerMonth: fieldFromAnswers.volumePerMonth ?? "",
+    valuePerItem: "",
+    currentTooling: fieldFromAnswers.currentTooling ?? "",
+    priorAttempts: fieldFromAnswers.priorAttempts ?? "",
+    benchmarkCategoryId,
   };
+
+  const brief: IntakeBrief = { ...baseBrief, ...overrides };
 
   const answerLines = q
     .filter((question) => specificAnswers[question.id])
@@ -565,10 +678,11 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
     specificAnswers: {},
     context: "",
     uploadedFiles: [],
+    briefOverrides: {},
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const totalSteps = 5;
+  const totalSteps = 6;
   const problemList = answers.industry ? PROBLEMS_BY_INDUSTRY[answers.industry] : BUSINESS_PROBLEMS;
   const config = answers.problemType
     ? [...BUSINESS_PROBLEMS, ...GOVERNMENT_PROBLEMS, ...EDUCATION_PROBLEMS, ...HEALTHCARE_PROBLEMS]
@@ -638,39 +752,162 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
         answers.size,
         answers.problemType,
         answers.specificAnswers,
-        answers.context
+        answers.context,
+        answers.briefOverrides
       )
     );
   }
 
+  // Seed brief that drives the confirmation step's editable defaults.
+  // Recomputed whenever the user's wizard answers change.
+  const seedBrief: IntakeBrief | null =
+    answers.industry && answers.size && answers.problemType
+      ? buildBriefFromWizard(
+          answers.industry,
+          answers.subIndustry,
+          answers.size,
+          answers.problemType,
+          answers.specificAnswers,
+          answers.context,
+          // Important: pass {} (not the user's overrides) so the seed reflects
+          // what the wizard composed from their assessment answers.
+          {}
+        ).brief
+      : null;
+
+  // Helper to update a single brief override field.
+  function setOverride<K extends keyof IntakeBrief>(field: K, value: IntakeBrief[K]) {
+    setAnswers((a) => ({
+      ...a,
+      briefOverrides: { ...a.briefOverrides, [field]: value },
+    }));
+  }
+
+  // What the user sees in the confirmation step: their override if present,
+  // else the seed (composed from canned + assessment answers).
+  function effective<K extends keyof IntakeBrief>(field: K): IntakeBrief[K] | "" {
+    if (!seedBrief) return "" as IntakeBrief[K];
+    const override = answers.briefOverrides[field];
+    return override !== undefined ? (override as IntakeBrief[K]) : seedBrief[field];
+  }
+
+  const STEP_LABELS = ["Industry", "Team", "Problem", "Details", "Review", "Data"];
+
+  // Scroll to top on every step change so the stepper is always in view.
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    }
+  }, [step]);
+
+  function handleBack() {
+    if (step === 1) {
+      onBack();
+    } else {
+      setStep(step - 1);
+    }
+  }
+
+  // Allow jumping back to any completed step via the stepper
+  function jumpToStep(target: number) {
+    if (target >= step) return;
+    setStep(target);
+  }
+
   return (
     <div className="flex flex-col gap-8">
-      {/* Progress */}
-      <div className="flex items-center gap-2">
+      {/* Top bar: back + segmented stepper */}
+      <div className="flex flex-col gap-5">
         <button
           type="button"
-          onClick={step > 1 ? () => { setStep((s) => s - 1); setShowSubIndustry(false); } : onBack}
-          className="mr-1 text-[13px] text-ink-muted transition hover:text-ink"
+          onClick={handleBack}
+          className="self-start inline-flex items-center gap-1.5 uppercase-mono"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--ink-3)",
+            cursor: "pointer",
+            padding: "2px 0",
+            fontSize: 10,
+            letterSpacing: "0.12em",
+            borderBottom: "1px solid transparent",
+            transition: "color 160ms ease, border-color 160ms ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--ink)";
+            e.currentTarget.style.borderBottomColor = "var(--ink)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--ink-3)";
+            e.currentTarget.style.borderBottomColor = "transparent";
+          }}
         >
-          ← Back
+          ← {step === 1 ? "Back to landing" : `Back to ${STEP_LABELS[step - 2]}`}
         </button>
-        {Array.from({ length: totalSteps }, (_, i) => (
-          <div
-            key={i}
-            className={[
-              "h-1.5 flex-1 rounded-full transition-colors duration-300",
-              i < step ? "bg-accent" : "bg-line",
-            ].join(" ")}
-          />
-        ))}
-        <span className="ml-1 text-[12px] tabular-nums text-ink-muted">
-          {step}&nbsp;/&nbsp;{totalSteps}
-        </span>
+
+        {/* Segmented stepper (clickable for completed steps) */}
+        <div className="flex items-center gap-3">
+          {STEP_LABELS.map((label, i) => {
+            const stepN = i + 1;
+            const done = stepN < step;
+            const active = stepN === step;
+            const clickable = done;
+            return (
+              <React.Fragment key={label}>
+                <button
+                  type="button"
+                  onClick={() => clickable && jumpToStep(stepN)}
+                  disabled={!clickable}
+                  aria-current={active ? "step" : undefined}
+                  className="flex items-center gap-2.5"
+                  style={{
+                    opacity: active || done ? 1 : 0.4,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    cursor: clickable ? "pointer" : "default",
+                  }}
+                >
+                  <span
+                    className="mono grid place-items-center rounded-full text-[10px]"
+                    style={{
+                      width: 22, height: 22,
+                      border: `1px solid ${active ? "var(--accent)" : done ? "transparent" : "var(--line)"}`,
+                      background: done ? "var(--ink)" : active ? "var(--accent)" : "transparent",
+                      color: done || active ? "var(--surface)" : "var(--ink-3)",
+                      transition: "transform 160ms ease",
+                    }}
+                  >
+                    {done ? "✓" : stepN}
+                  </span>
+                  <span
+                    className="uppercase-mono hidden sm:block"
+                    style={{
+                      fontSize: 10,
+                      color: clickable ? "var(--ink-2)" : undefined,
+                      textDecoration: clickable ? "underline" : "none",
+                      textUnderlineOffset: 3,
+                      textDecorationColor: "var(--line)",
+                    }}
+                  >
+                    {label}
+                  </span>
+                </button>
+                {i < STEP_LABELS.length - 1 && (
+                  <div
+                    className="h-px flex-1"
+                    style={{ background: done ? "var(--ink)" : "var(--line)" }}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
 
       {/* Step 1: Industry */}
       {step === 1 && (
-        <WizardStep title="What best describes your organization?">
+        <WizardStep title="What best describes your organization?" stepN={1} totalSteps={totalSteps}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             {INDUSTRIES.map((ind) => (
               <OptionCard
@@ -708,7 +945,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 
       {/* Step 2: Size */}
       {step === 2 && (
-        <WizardStep title="How big is your team?">
+        <WizardStep title="How big is your team?" stepN={2} totalSteps={totalSteps}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {SIZES.map((s) => (
               <OptionCard
@@ -728,7 +965,7 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 
       {/* Step 3: Problem type */}
       {step === 3 && (
-        <WizardStep title="What process is broken?">
+        <WizardStep title="What process is broken?" stepN={3} totalSteps={totalSteps}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {problemList.map((p) => (
               <OptionCard
@@ -749,33 +986,39 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 
       {/* Step 4: Specific questions */}
       {step === 4 && config && (
-        <WizardStep title="A few quick questions">
+        <WizardStep title="A few quick questions" stepN={4} totalSteps={totalSteps}>
           <div className="flex flex-col gap-7">
             {config.questions.map((q) => (
               <div key={q.id} className="flex flex-col gap-3">
                 <p className="text-[15px] font-medium text-ink">{q.question}</p>
                 {q.type === "cards" && q.options ? (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {q.options.map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() =>
-                          setAnswers((a) => ({
-                            ...a,
-                            specificAnswers: { ...a.specificAnswers, [q.id]: opt },
-                          }))
-                        }
-                        className={[
-                          "rounded-lg border px-4 py-3 text-left text-[13px] transition",
-                          answers.specificAnswers[q.id] === opt
-                            ? "border-accent bg-accent-soft font-medium text-accent"
-                            : "border-line bg-canvas text-ink hover:border-accent/40 hover:bg-surface",
-                        ].join(" ")}
-                      >
-                        {opt}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {q.options.map((opt) => {
+                      const selected = answers.specificAnswers[q.id] === opt;
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setAnswers((a) => ({
+                              ...a,
+                              specificAnswers: { ...a.specificAnswers, [q.id]: opt },
+                            }))
+                          }
+                          className="px-4 py-3.5 text-left text-[14px] transition"
+                          style={{
+                            border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`,
+                            borderRadius: "var(--radius-card)",
+                            background: selected ? "var(--accent-soft)" : "var(--surface)",
+                            color: selected ? "var(--accent)" : "var(--ink)",
+                            fontFamily: "var(--sans)",
+                            fontWeight: selected ? 600 : 500,
+                          }}
+                        >
+                          {opt}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <textarea
@@ -788,31 +1031,130 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
                     }
                     placeholder={q.placeholder}
                     rows={2}
-                    className="w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full resize-y rounded-md border border-line bg-surface shadow-inner-soft px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 )}
               </div>
             ))}
           </div>
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex items-center justify-between">
+            <BackButton onClick={handleBack} label={`Back to ${STEP_LABELS[2]}`} />
             <button
               type="button"
               onClick={() => setStep(5)}
               disabled={!allSpecificAnswered}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[13px] font-semibold text-white shadow-btn transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                background: "var(--ink)", color: "var(--surface)",
+                border: "none", borderRadius: "var(--radius)",
+                padding: "12px 22px", fontSize: 13,
+              }}
             >
-              Continue →
+              Continue
+              <span className="serif italic" style={{ fontSize: 16 }}>→</span>
             </button>
           </div>
         </WizardStep>
       )}
 
-      {/* Step 5: Data & Context */}
-      {step === 5 && (
+      {/* Step 5: Confirm your brief */}
+      {step === 5 && seedBrief && (
+        <WizardStep
+          title="Confirm your brief"
+          subtitle="We've drafted this from your answers. Edit anything that doesn't match your situation, then continue."
+          stepN={5} totalSteps={totalSteps}
+        >
+          <div className="flex flex-col gap-5">
+            <BriefField
+              label="Workflow name"
+              value={String(effective("workflowName"))}
+              onChange={(v) => setOverride("workflowName", v)}
+            />
+            <BriefField
+              label="Pain point"
+              hint="What is broken? Describe the gap between what should happen and what actually happens."
+              multiline
+              value={String(effective("painPoint"))}
+              onChange={(v) => setOverride("painPoint", v)}
+            />
+            <BriefField
+              label="Biggest day-to-day frustration"
+              hint="The specific moment, behavior, or symptom that makes the team groan."
+              multiline
+              value={String(effective("biggestFrustration"))}
+              onChange={(v) => setOverride("biggestFrustration", v)}
+            />
+            <BriefField
+              label="Success metric"
+              hint="How will you measure success in numbers? e.g. 'Conversion above 60%', 'On-time delivery > 90%'."
+              multiline
+              value={String(effective("successMetric"))}
+              onChange={(v) => setOverride("successMetric", v)}
+            />
+            <BriefField
+              label="Service-level commitment / SLA"
+              hint="The deadline, response time, or quality bar this workflow must hit."
+              multiline
+              value={String(effective("slaText"))}
+              onChange={(v) => setOverride("slaText", v)}
+            />
+            <BriefField
+              label="Volume per month"
+              hint="How many work items move through this workflow in a typical month?"
+              placeholder="e.g. ~120 leads per month, ~600 tickets per month"
+              value={String(effective("volumePerMonth"))}
+              onChange={(v) => setOverride("volumePerMonth", v)}
+            />
+            <BriefField
+              label="Value per item (optional)"
+              hint="Rough $ per work item. Powers concrete revenue-at-risk math in the report."
+              placeholder="e.g. ~$8,000 per closed deal, ~$320 per ticket"
+              value={String(effective("valuePerItem"))}
+              onChange={(v) => setOverride("valuePerItem", v)}
+            />
+            <BriefField
+              label="Current tooling"
+              hint="What system runs this today? (CRM, spreadsheet, email, custom tool, none)"
+              value={String(effective("currentTooling"))}
+              onChange={(v) => setOverride("currentTooling", v)}
+            />
+            <BriefField
+              label="What's been tried before? (optional)"
+              hint="Previous attempts to fix this. Helps the report avoid re-recommending what failed."
+              multiline
+              value={String(effective("priorAttempts"))}
+              onChange={(v) => setOverride("priorAttempts", v)}
+            />
+          </div>
+          <div className="mt-6 flex items-center justify-between">
+            <BackButton onClick={handleBack} label={`Back to ${STEP_LABELS[3]}`} />
+            <button
+              type="button"
+              onClick={() => setStep(6)}
+              className="inline-flex items-center gap-2.5 font-medium transition"
+              style={{
+                background: "var(--ink)", color: "var(--surface)",
+                border: "none", borderRadius: "var(--radius)",
+                padding: "12px 22px", fontSize: 13,
+              }}
+            >
+              Continue
+              <span className="serif italic" style={{ fontSize: 16 }}>→</span>
+            </button>
+          </div>
+        </WizardStep>
+      )}
+
+      {/* Step 6: Data & Context */}
+      {step === 6 && (
         <WizardStep
           title="Add your data and context"
           subtitle="Upload files or paste text. The more operational detail you provide, the more specific and actionable the analysis."
+          stepN={6} totalSteps={totalSteps}
         >
+          {/* Privacy Disclaimer */}
+          <DataPrivacyDisclaimer />
+
           {/* Database connector */}
           <DatabaseConnector
             disabled={false}
@@ -826,8 +1168,22 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
             }}
           />
 
+          {/* Cloud file (Google Drive / SharePoint / direct URL) */}
+          <CloudFileConnector
+            disabled={false}
+            onData={(label, text, rowCount) => {
+              const block = `\n\n--- FILE: ${label} (${rowCount} rows) ---\n${text}\n--- END: ${label} ---`;
+              setAnswers((a) => ({
+                ...a,
+                context: a.context ? a.context + block : block.trimStart(),
+                uploadedFiles: [...a.uploadedFiles, { name: `🔗 ${label.slice(0, 40)}`, size: `${rowCount} rows` }],
+              }));
+            }}
+          />
+
+          {/* 
           {/* Drop-zone / upload area */}
-          <div className="relative flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-line bg-canvas px-6 py-8 text-center transition hover:border-accent/50">
+          <div className="relative flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-line bg-surface px-6 py-8 text-center transition hover:border-accent/50">
             <input
               ref={fileInputRef}
               type="file"
@@ -890,17 +1246,24 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
               }}
               rows={5}
               placeholder="Paste process docs, SOPs, team notes, metrics, escalation history, or anything that gives context about how this workflow actually runs."
-              className="w-full resize-y rounded-md border border-line bg-canvas px-3 py-3 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full resize-y rounded-md border border-line bg-surface shadow-inner-soft px-3 py-3 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between">
+            <BackButton onClick={handleBack} label={`Back to ${STEP_LABELS[4]}`} />
             <button
               type="button"
               onClick={handleStart}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-[13px] font-semibold text-white shadow-btn transition hover:bg-accent-hover"
+              className="inline-flex items-center gap-2.5 font-medium transition"
+              style={{
+                background: "var(--ink)", color: "var(--surface)",
+                border: "none", borderRadius: "var(--radius)",
+                padding: "12px 22px", fontSize: 13,
+              }}
             >
-              Start Analysis →
+              Start Analysis
+              <span className="serif italic" style={{ fontSize: 16 }}>→</span>
             </button>
           </div>
         </WizardStep>
@@ -912,18 +1275,62 @@ export function OnboardingWizard({ onComplete, onBack }: Props) {
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function WizardStep({
-  title, subtitle, children,
+  title, subtitle, stepN, totalSteps, children,
 }: {
-  title: string; subtitle?: string; children: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  stepN?: number;
+  totalSteps?: number;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-ink">{title}</h2>
-        {subtitle && <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{subtitle}</p>}
+        {stepN && totalSteps && (
+          <div className="eyebrow eyebrow-accent mb-2">
+            <span className="mr-2" style={{ color: "var(--ink-3)" }}>
+              Step {stepN} of {totalSteps}
+            </span>
+          </div>
+        )}
+        <h2 className="h-section" style={{ margin: 0 }}>{title}</h2>
+        {subtitle && (
+          <p className="mt-2 text-[14px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+            {subtitle}
+          </p>
+        )}
       </div>
       {children}
     </div>
+  );
+}
+
+function BackButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 uppercase-mono"
+      style={{
+        background: "transparent",
+        border: "none",
+        color: "var(--ink-3)",
+        cursor: "pointer",
+        padding: "10px 0",
+        fontSize: 10,
+        letterSpacing: "0.12em",
+        borderBottom: "1px solid transparent",
+        transition: "color 160ms ease, border-color 160ms ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = "var(--ink)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = "var(--ink-3)";
+      }}
+    >
+      ← {label}
+    </button>
   );
 }
 
@@ -936,18 +1343,61 @@ function OptionCard({
     <button
       type="button"
       onClick={onClick}
-      className={[
-        "flex flex-col gap-1.5 rounded-xl border p-4 text-left transition",
-        selected
-          ? "border-accent bg-accent-soft shadow-sm"
-          : "border-line bg-surface hover:border-accent/40 hover:bg-canvas",
-      ].join(" ")}
+      className="flex flex-col gap-2 p-4 text-left transition"
+      style={{
+        border: `1px solid ${selected ? "var(--accent)" : "var(--line)"}`,
+        borderRadius: "var(--radius-card)",
+        background: selected ? "var(--accent-soft)" : "var(--surface)",
+        fontFamily: "var(--sans)",
+      }}
     >
-      {icon && <span className="text-2xl leading-none">{icon}</span>}
-      <span className={["text-[14px] font-semibold", selected ? "text-accent" : "text-ink"].join(" ")}>
+      {icon && <span className="text-xl leading-none">{icon}</span>}
+      <span
+        className="text-[14px] font-semibold"
+        style={{ color: selected ? "var(--accent)" : "var(--ink)" }}
+      >
         {label}
       </span>
-      <span className="text-[12px] leading-snug text-ink-muted">{desc}</span>
+      <span className="text-[12px] leading-snug" style={{ color: "var(--ink-3)" }}>
+        {desc}
+      </span>
     </button>
+  );
+}
+
+function BriefField({
+  label, hint, value, onChange, multiline, placeholder,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </label>
+      {hint && <p className="text-[12px] leading-snug text-ink-muted">{hint}</p>}
+      {multiline ? (
+        <textarea
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+          className="w-full resize-y rounded-md border border-line bg-surface shadow-inner-soft px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-md border border-line bg-surface shadow-inner-soft px-3 py-2 text-[13px] text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      )}
+    </div>
   );
 }

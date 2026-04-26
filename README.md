@@ -2,6 +2,8 @@
 
 OpsAdvisor is a lean, hackathon-ready process-improvement app that helps a business owner diagnose where leads are leaking out of a customer acquisition workflow, identify the highest-impact operational fix, and leave behind controls to make the improvement stick.
 
+> Built by David Tanis for the _Built with Opus 4.7_ hackathon by Anthropic.
+
 ## What it does
 
 For this MVP, OpsAdvisor focuses on a single workflow:

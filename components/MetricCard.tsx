@@ -14,7 +14,7 @@ export function MetricCard({ label, value, sub, highlight, alert }: Props) {
         highlight
           ? "border-accent-border bg-accent-soft"
           : alert
-          ? "border-orange-200 bg-orange-50"
+          ? "border-ochre-border bg-ochre-soft"
           : "border-line bg-surface",
       ].join(" ")}
     >
@@ -25,7 +25,7 @@ export function MetricCard({ label, value, sub, highlight, alert }: Props) {
           highlight
             ? "text-accent"
             : alert
-            ? "text-orange-600"
+            ? "text-ochre-ink"
             : "text-ink",
         ].join(" ")}
       >

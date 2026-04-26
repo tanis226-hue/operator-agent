@@ -45,18 +45,49 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
     Array.isArray(v)
       ? v.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
       : [];
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+
+  // Allow legacy clients that still send `slaConstraint`.
+  const slaTextRaw = str(o.slaText) || str(o.slaConstraint);
+
+  const VALID_INDUSTRIES = new Set([
+    "government",
+    "business",
+    "education",
+    "healthcare",
+    "other",
+  ]);
+  const VALID_SIZES = new Set(["solo", "small", "midsize", "large"]);
+
+  const industry =
+    typeof o.industry === "string" && VALID_INDUSTRIES.has(o.industry)
+      ? (o.industry as IntakeBrief["industry"])
+      : null;
+  const teamSize =
+    typeof o.teamSize === "string" && VALID_SIZES.has(o.teamSize)
+      ? (o.teamSize as IntakeBrief["teamSize"])
+      : null;
 
   const brief: IntakeBrief = {
     businessName: str(o.businessName),
     workflowName: str(o.workflowName) || DEMO_INTAKE_BRIEF.workflowName,
+    industry,
+    subIndustry: str(o.subIndustry) || null,
+    teamSize,
     painPoint: str(o.painPoint),
+    biggestFrustration: str(o.biggestFrustration),
     successMetric: str(o.successMetric),
-    slaConstraint: str(o.slaConstraint),
+    slaText: slaTextRaw,
+    slaThresholdHours: num(o.slaThresholdHours),
     currentStages: arr(o.currentStages),
-    availableEvidence: arr(o.availableEvidence),
     qualifiedLeadDefinition: str(o.qualifiedLeadDefinition),
     suspectedStage: str(o.suspectedStage),
-    biggestFrustration: str(o.biggestFrustration),
+    volumePerMonth: str(o.volumePerMonth),
+    valuePerItem: str(o.valuePerItem),
+    currentTooling: str(o.currentTooling),
+    priorAttempts: str(o.priorAttempts),
+    benchmarkCategoryId: str(o.benchmarkCategoryId) || null,
   };
 
   if (!brief.businessName || !brief.painPoint || !brief.successMetric) {
@@ -67,10 +98,7 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
   if (brief.currentStages.length === 0) {
     brief.currentStages = DEMO_INTAKE_BRIEF.currentStages;
   }
-  if (brief.availableEvidence.length === 0) {
-    brief.availableEvidence = DEMO_INTAKE_BRIEF.availableEvidence;
-  }
-  if (!brief.slaConstraint) brief.slaConstraint = DEMO_INTAKE_BRIEF.slaConstraint;
+  if (!brief.slaText) brief.slaText = DEMO_INTAKE_BRIEF.slaText;
   if (!brief.qualifiedLeadDefinition) {
     brief.qualifiedLeadDefinition = DEMO_INTAKE_BRIEF.qualifiedLeadDefinition;
   }

@@ -12,9 +12,9 @@ type Variant = "neutral" | "ok" | "warning" | "critical";
 
 const V: Record<Variant, { bg: string; value: string; sub: string }> = {
   neutral:  { bg: "bg-surface",    value: "text-ink",          sub: "text-ink-muted" },
-  ok:       { bg: "bg-emerald-50", value: "text-emerald-700",  sub: "text-emerald-600/70" },
-  warning:  { bg: "bg-orange-50",  value: "text-orange-600",   sub: "text-orange-500/70" },
-  critical: { bg: "bg-red-50",     value: "text-red-600",      sub: "text-red-500/70" },
+  ok:       { bg: "bg-moss-soft",  value: "text-moss-ink",     sub: "text-moss-ink/70" },
+  warning:  { bg: "bg-ochre-soft", value: "text-ochre-ink",    sub: "text-ochre-ink/70" },
+  critical: { bg: "bg-rust-soft",  value: "text-rust-ink",     sub: "text-rust-ink/70" },
 };
 
 function Tile({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { IntakeBriefCard } from "./IntakeBriefCard";
 import { IntakeBriefEditor } from "./IntakeBriefEditor";
 import { AnalysisResults } from "./AnalysisResults";
@@ -36,9 +36,24 @@ const PIPELINE_PHASES: PhaseState[] = [
 ];
 
 const EMPTY_BRIEF: IntakeBrief = {
-  businessName: "", workflowName: "", painPoint: "", successMetric: "",
-  slaConstraint: "", currentStages: [], availableEvidence: [],
-  qualifiedLeadDefinition: "", suspectedStage: "", biggestFrustration: "",
+  businessName: "",
+  workflowName: "",
+  industry: null,
+  subIndustry: null,
+  teamSize: null,
+  painPoint: "",
+  biggestFrustration: "",
+  successMetric: "",
+  slaText: "",
+  slaThresholdHours: null,
+  currentStages: [],
+  qualifiedLeadDefinition: "",
+  suspectedStage: "",
+  volumePerMonth: "",
+  valuePerItem: "",
+  currentTooling: "",
+  priorAttempts: "",
+  benchmarkCategoryId: null,
 };
 
 type Props = {
@@ -64,6 +79,8 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
   const [copied, setCopied]         = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailSent, setEmailSent]   = useState(false);
 
   const [mode, setMode]             = useState<CaseMode>(externalBrief ? "custom" : "demo");
   const [customBrief, setCustomBrief] = useState<IntakeBrief>(externalBrief ?? EMPTY_BRIEF);
@@ -306,6 +323,30 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleEmailReport() {
+    if (!result) return;
+    setEmailModalOpen(true);
+  }
+
+  async function handleSendEmail(address: string): Promise<void> {
+    if (!result) return;
+    const res = await fetch("/api/email-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: address,
+        brief: activeBrief,
+        generated: result.generated,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json() as { error?: string };
+      throw new Error(data.error ?? "Failed to send email.");
+    }
+    setEmailSent(true);
+    setTimeout(() => setEmailSent(false), 4000);
   }
 
   type ReportFormat = "docx" | "pdf" | "txt";
@@ -666,13 +707,14 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
       {!(instantDemo && result?.usedFallback && !briefOpen) && (
         briefOpen ? (
           mode === "demo"
-            ? <IntakeBriefCard brief={brief} />
+            ? <IntakeBriefCard brief={brief} onClose={() => setBriefOpen(false)} />
             : <IntakeBriefEditor
                 brief={customBrief}
                 processNote={customNote}
                 onBriefChange={setCustomBrief}
                 onProcessNoteChange={setCustomNote}
                 disabled={isRunning}
+                onClose={() => setBriefOpen(false)}
               />
         ) : (
           <button
@@ -816,6 +858,13 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
         )}
       </div>
 
+      {emailModalOpen && (
+        <EmailModal
+          onClose={() => setEmailModalOpen(false)}
+          onSend={handleSendEmail}
+        />
+      )}
+
       {isDone && result ? (
         <AnalysisResults
           analysis={result.analysis}
@@ -823,6 +872,13 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
           brief={activeBrief}
           mode={mode}
           onAnalyzeOwn={onAnalyzeOwn}
+          onRestart={onRestart}
+          onCopyReport={handleCopyReport}
+          onSaveReport={handleSaveReport}
+          onEmailReport={handleEmailReport}
+          reportCopied={copied}
+          reportSaved={downloaded}
+          reportEmailed={emailSent}
         />
       ) : (
         <PlaceholderResults />
@@ -1059,6 +1115,128 @@ function formatDuration(ms: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
+// ─── Email modal ─────────────────────────────────────────────────────────────
+
+function EmailModal({
+  onClose,
+  onSend,
+}: {
+  onClose: () => void;
+  onSend: (email: string) => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setErrorMsg("Please enter a valid email address.");
+      return;
+    }
+    setState("sending");
+    setErrorMsg("");
+    try {
+      await onSend(trimmed);
+      setState("sent");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setState("error");
+    }
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        aria-hidden
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+      />
+      {/* Modal */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="email-modal-heading"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="w-full max-w-sm rounded-card border border-line bg-surface shadow-card-lg">
+          <div className="border-b border-line px-6 py-4">
+            <h2 id="email-modal-heading" className="text-[15px] font-semibold text-ink">
+              Email this report
+            </h2>
+            <p className="mt-0.5 text-[13px] text-ink-muted">
+              We'll send a full PDF-quality report to your inbox.
+            </p>
+          </div>
+
+          {state === "sent" ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-xl">✓</div>
+              <p className="text-[14px] font-medium text-ink">Report sent!</p>
+              <p className="text-[13px] text-ink-muted">Check your inbox — it should arrive within a minute.</p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-2 rounded-lg border border-line bg-canvas px-5 py-2 text-[13px] font-medium text-ink transition hover:bg-surface"
+              >
+                Close
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4 px-6 py-5">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="email-report-input"
+                  className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted"
+                >
+                  Your email address
+                </label>
+                <input
+                  ref={inputRef}
+                  id="email-report-input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setErrorMsg(""); }}
+                  placeholder="you@example.com"
+                  disabled={state === "sending"}
+                  className="w-full rounded-md border border-line bg-canvas px-3 py-2 text-[13px] text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-60"
+                />
+                {errorMsg && (
+                  <p className="text-[12px] text-red-500">{errorMsg}</p>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={state === "sending"}
+                  className="rounded-lg border border-line bg-canvas px-4 py-2 text-[13px] font-medium text-ink-muted transition hover:text-ink disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={state === "sending"}
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-semibold text-white shadow-btn transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {state === "sending" ? "Sending…" : "Send report"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Save report dropdown ────────────────────────────────────────────────────
 
 function SaveReportMenu({
@@ -1075,7 +1253,6 @@ function SaveReportMenu({
   const items: Array<{ format: "docx" | "pdf" | "txt"; label: string; sub: string }> = [
     { format: "docx", label: "Word document",    sub: ".docx, editable in Word, Pages, Google Docs" },
     { format: "pdf",  label: "PDF",              sub: ".pdf, opens print dialog (Save as PDF)" },
-    { format: "txt",  label: "Plain text",       sub: ".txt, copy-paste anywhere" },
   ];
 
   return (

@@ -9,9 +9,9 @@ type Props = {
 };
 
 const WHEN_STYLES: Record<string, { pill: string; label: string }> = {
-  "this week":    { pill: "bg-red-100 text-red-700 border-red-200",     label: "This week" },
-  "this month":   { pill: "bg-amber-100 text-amber-700 border-amber-200", label: "This month" },
-  "this quarter": { pill: "bg-blue-100 text-blue-700 border-blue-200",   label: "This quarter" },
+  "this week":    { pill: "bg-rust-soft text-rust-ink border-rust-border",   label: "This week" },
+  "this month":   { pill: "bg-ochre-soft text-ochre-ink border-ochre-border", label: "This month" },
+  "this quarter": { pill: "bg-moss-soft text-moss-ink border-moss-border",   label: "This quarter" },
 };
 
 export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
@@ -35,7 +35,7 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
       className="relative overflow-hidden rounded-card border border-accent/30 bg-surface shadow-card-lg"
     >
       {/* Accent top stripe */}
-      <div className="h-1 w-full bg-accent" />
+      <div className="h-[3px] w-full bg-accent/60" />
 
       {/* Header */}
       <div className="border-b border-line px-6 py-4">
@@ -56,13 +56,13 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
             <p className="eyebrow mb-1.5">What's broken</p>
             <p className="text-[14px] font-medium leading-snug text-ink">{problem}</p>
           </div>
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex flex-col gap-1">
-            <p className="eyebrow text-red-600">Revenue at risk</p>
-            <p className="text-[22px] font-bold tabular-nums text-red-700 leading-tight">
+          <div className="rounded-lg border border-rust-border bg-rust-soft px-4 py-3 flex flex-col gap-1">
+            <p className="eyebrow text-rust-ink">Revenue at risk</p>
+            <p className="text-[22px] font-bold tabular-nums text-rust-ink leading-tight">
               {displayAtRisk}
             </p>
             {atRiskSub && (
-              <p className="text-[11px] text-red-500 leading-snug">{atRiskSub}</p>
+              <p className="text-[11px] text-rust-ink/70 leading-snug">{atRiskSub}</p>
             )}
           </div>
         </div>
@@ -79,9 +79,9 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
               return (
                 <li
                   key={i}
-                  className="flex items-start gap-3 rounded-lg border border-line bg-canvas px-4 py-3"
+                  className="flex items-start gap-3 rounded-lg border border-line bg-surface px-4 py-3"
                 >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-[10px] font-bold text-accent">
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -96,7 +96,7 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
                         {style.label}
                       </span>
                       {item.expectedLift && (
-                        <span className="text-[12px] font-medium text-accent">
+                        <span className="text-[12px] text-ink-soft">
                           → {item.expectedLift}
                         </span>
                       )}

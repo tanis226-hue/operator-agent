@@ -289,12 +289,23 @@ export const BENCHMARK_LIBRARY: BenchmarkCategory[] = [
 
 /**
  * Pick the most relevant benchmark category for a given intake brief.
- * Falls back to the operations category if nothing matches.
+ *
+ * If `benchmarkCategoryId` is set on the brief (typically by the wizard),
+ * use it directly. Otherwise fall back to keyword matching against
+ * `workflowName + painPoint`. Final fallback is operations-fulfillment.
  */
 export function selectBenchmarks(brief: {
   workflowName: string;
   painPoint: string;
+  benchmarkCategoryId?: string | null;
 }): BenchmarkCategory {
+  if (brief.benchmarkCategoryId) {
+    const direct = BENCHMARK_LIBRARY.find(
+      (c) => c.id === brief.benchmarkCategoryId
+    );
+    if (direct) return direct;
+  }
+
   const haystack = `${brief.workflowName} ${brief.painPoint}`.toLowerCase();
   let best: { category: BenchmarkCategory; score: number } | null = null;
 

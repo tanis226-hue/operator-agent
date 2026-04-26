@@ -6,6 +6,7 @@ import { StageDropoffChart } from "./StageDropoffChart";
 import { OwnerComparisonChart } from "./OwnerComparisonChart";
 import { InsightStrip } from "./InsightStrip";
 import { OwnerBriefCard } from "./OwnerBriefCard";
+import { NextStepsCTA, type ReportSaveFormat } from "./NextStepsCTA";
 import type { PipelineAnalysis } from "@/lib/analyzePipeline";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
 import type { IntakeBrief } from "@/lib/intakeBrief";
@@ -16,14 +17,34 @@ type Props = {
   brief?: IntakeBrief;
   mode?: "demo" | "custom";
   onAnalyzeOwn?: () => void;
+  onRestart?: () => void;
+  onCopyReport?: () => void | Promise<void>;
+  onSaveReport?: (format: ReportSaveFormat) => void | Promise<void>;
+  onEmailReport?: () => void;
+  reportCopied?: boolean;
+  reportSaved?: boolean;
+  reportEmailed?: boolean;
 };
 
 const SEVERITY_STYLES = {
-  critical: "border-red-200 bg-red-50 text-red-700",
-  warning: "border-orange-200 bg-orange-50 text-orange-700",
+  critical: "border-rust-border bg-rust-soft text-rust-ink",
+  warning: "border-ochre-border bg-ochre-soft text-ochre-ink",
 };
 
-export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn }: Props) {
+export function AnalysisResults({
+  analysis,
+  generated,
+  brief,
+  mode,
+  onAnalyzeOwn,
+  onRestart,
+  onCopyReport,
+  onSaveReport,
+  onEmailReport,
+  reportCopied,
+  reportSaved,
+  reportEmailed,
+}: Props) {
   const {
     executiveSummary,
     problemDefinition,
@@ -47,11 +68,14 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
     <div className="flex flex-col gap-5">
 
       {/* ── OWNER BRIEF (TOP) ── */}
-      {generated.ownerBrief && (
-        <OwnerBriefCard ownerBrief={generated.ownerBrief} analysis={analysis} />
-      )}
+      <div id="section-brief" style={{ scrollMarginTop: 96 }}>
+        {generated.ownerBrief && (
+          <OwnerBriefCard ownerBrief={generated.ownerBrief} analysis={analysis} />
+        )}
+      </div>
 
       {/* ── EXECUTIVE SUMMARY ── */}
+      <div id="section-summary" style={{ scrollMarginTop: 96 }}>
       <PhaseCard index={0} title="Executive Summary" eyebrow="TL;DR" variant="summary">
         <div className="flex flex-col gap-5">
           <p className="text-[15px] font-medium leading-relaxed text-ink">
@@ -72,16 +96,18 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
           </div>
         </div>
       </PhaseCard>
+      </div>
 
       {/* At-a-glance KPI strip — demo mode only */}
       {analysis && <InsightStrip analysis={analysis} />}
 
       {/* ── DEFINE ── */}
+      <div id="section-define" style={{ scrollMarginTop: 96 }}>
       <DmaicHeader phase="Define" subtitle="Clarify what problem we are solving and what success looks like" />
 
       {/* 1. Problem Definition */}
       <PhaseCard index={1} title="Problem Definition" eyebrow="Workflow & Scope">
-        <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2"> 
           {[
             ["Workflow", problemDefinition.workflow],
             ["Business problem", problemDefinition.businessProblem],
@@ -96,8 +122,10 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
           ))}
         </dl>
       </PhaseCard>
+      </div>
 
       {/* ── MEASURE ── */}
+      <div id="section-measure" style={{ scrollMarginTop: 96 }}>
       <DmaicHeader phase="Measure" subtitle="Quantify the current state, identify the performance gap, and compare to benchmarks" />
 
       {/* 2. Baseline & KPIs */}
@@ -163,10 +191,10 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
               <div className="rounded-lg border border-line bg-surface px-4 py-3">
                 <p className="eyebrow mb-2">From your intake brief</p>
                 <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-[12px] md:grid-cols-2">
-                  {brief.slaConstraint && (
+                  {brief.slaText && (
                     <div className="flex flex-col">
                       <dt className="text-ink-muted">SLA / constraint</dt>
-                      <dd className="leading-relaxed text-ink">{brief.slaConstraint}</dd>
+                      <dd className="leading-relaxed text-ink">{brief.slaText}</dd>
                     </div>
                   )}
                   {brief.currentStages && brief.currentStages.length > 0 && (
@@ -200,8 +228,8 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
               ))}
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-                <p className="eyebrow text-red-700 mb-1">Performance gap</p>
+              <div className="rounded-lg border border-rust-border bg-rust-soft px-4 py-3">
+                <p className="eyebrow text-rust-ink mb-1">Performance gap</p>
                 <p className="text-sm leading-relaxed text-ink">{measureBaseline.performanceGap}</p>
               </div>
               <div className="rounded-lg border border-line bg-canvas px-4 py-3">
@@ -248,7 +276,10 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
         </PhaseCard>
       ) : null}
 
+      </div>
+
       {/* ── ANALYZE ── */}
+      <div id="section-analyze" style={{ scrollMarginTop: 96 }}>
       <DmaicHeader phase="Analyze" subtitle="Identify the root causes and mechanisms driving failure" />
 
       {/* 3. Root-Cause Analysis */}
@@ -269,7 +300,7 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                     key={c.rank}
                     className="flex gap-3 rounded-lg border border-line bg-surface p-3 text-sm"
                   >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-[10px] font-bold text-accent">
                       {c.rank}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -277,7 +308,7 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                         <span className="font-semibold text-ink">{c.factor}</span>
                         {det && (
                           <div className="flex shrink-0 flex-col items-end gap-0.5">
-                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-red-600">
+                            <span className="rounded-full bg-rust-soft px-2 py-0.5 text-[11px] font-bold tabular-nums text-rust-ink">
                               −{det.impactDelta.toFixed(0)}pp
                             </span>
                             <span className="text-[10px] text-ink-muted">{det.affectedLeads} leads</span>
@@ -304,15 +335,15 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                   valueColor="text-accent"
                 />
                 <div className="flex items-center justify-end">
-                  <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600">
+                  <span className="rounded-full border border-rust-border bg-rust-soft px-2.5 py-0.5 text-[11px] font-bold text-rust-ink">
                     ↓ {responseGap.toFixed(0)}pp gap
                   </span>
                 </div>
                 <ConversionBar
                   label="First response > 24h (delayed)"
                   rate={analysis.conversionWithDelayed}
-                  color="bg-red-400"
-                  valueColor="text-red-600"
+                  color="bg-rust"
+                  valueColor="text-rust-ink"
                 />
               </div>
               <div className="mt-4 flex flex-col gap-2.5 border-t border-line pt-4">
@@ -323,15 +354,15 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                   valueColor="text-accent"
                 />
                 <div className="flex items-center justify-end">
-                  <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-orange-600">
+                  <span className="rounded-full border border-ochre-border bg-ochre-soft px-2.5 py-0.5 text-[11px] font-bold text-ochre-ink">
                     ↓ {followupGap.toFixed(0)}pp gap
                   </span>
                 </div>
                 <ConversionBar
                   label="Missed follow-up"
                   rate={analysis.conversionMissedFollowup}
-                  color="bg-orange-400"
-                  valueColor="text-orange-600"
+                  color="bg-ochre"
+                  valueColor="text-ochre-ink"
                 />
               </div>
               <p className="mt-3 text-xs leading-relaxed text-ink-soft">
@@ -362,7 +393,10 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
         </div>
       </PhaseCard>
 
+      </div>
+
       {/* ── IMPROVE ── */}
+      <div id="section-improve" style={{ scrollMarginTop: 96 }}>
       <DmaicHeader phase="Improve" subtitle="Specific changes and the operating procedure to make them stick" />
 
       {/* 4. Improvement Plan (recommendation + SOP combined) */}
@@ -404,8 +438,8 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
               ))}
             </ul>
             <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-              <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2">
-                <span className="eyebrow text-orange-700 block mb-1">Escalation</span>
+              <div className="rounded-md border border-ochre-border bg-ochre-soft px-3 py-2">
+                <span className="eyebrow text-ochre-ink block mb-1">Escalation</span>
                 <p className="leading-relaxed text-ink">{workflowSOP.escalation}</p>
               </div>
               <div className="rounded-md border border-line bg-canvas px-3 py-2">
@@ -417,7 +451,10 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
         </div>
       </PhaseCard>
 
+      </div>
+
       {/* ── CONTROL ── */}
+      <div id="section-control" style={{ scrollMarginTop: 96 }}>
       <DmaicHeader phase="Control" subtitle="Metrics, alerts, and monitoring to keep the improvement in place" />
 
       {/* 5. Control System (KPIs + alerts + monitoring combined) */}
@@ -432,8 +469,8 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                 <MetricCard label="Conversion rate" value={`${analysis.conversionRate}%`} sub="New lead → booked meeting" highlight />
                 <MetricCard label="Median first response" value={`${analysis.medianFirstResponseHours.toFixed(1)}h`} sub="SLA target: 4h" alert={analysis.medianFirstResponseHours > 4} />
                 <MetricCard label="Stalled lead rate" value={`${analysis.stalledLeadRate}%`} sub="Alert threshold: 15%" alert={analysis.stalledLeadRate > 15} />
-                <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
-                  <span className="eyebrow text-orange-600">Needs attention</span>
+                <div className="flex flex-col gap-1 rounded-xl border border-ochre-border bg-ochre-soft px-4 py-4">
+                  <span className="eyebrow text-ochre-ink">Needs attention</span>
                   <span className="mt-1 text-sm font-medium leading-snug text-ink">{controlDashboard.segmentNeedingAttention}</span>
                 </div>
               </div>
@@ -444,8 +481,8 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
                     <span className="text-[13px] font-medium leading-snug text-ink">{label}</span>
                   </div>
                 ))}
-                <div className="flex flex-col gap-1 rounded-xl border border-orange-200 bg-orange-50 px-4 py-4">
-                  <span className="eyebrow text-orange-600">Needs attention</span>
+                <div className="flex flex-col gap-1 rounded-xl border border-ochre-border bg-ochre-soft px-4 py-4">
+                  <span className="eyebrow text-ochre-ink">Needs attention</span>
                   <span className="mt-1 text-sm font-medium leading-snug text-ink">{controlDashboard.segmentNeedingAttention}</span>
                 </div>
               </div>
@@ -493,22 +530,22 @@ export function AnalysisResults({ analysis, generated, brief, mode, onAnalyzeOwn
         </div>
       </PhaseCard>
 
-      {/* ── ANALYZE YOUR OWN WORKFLOW CTA ── */}
-      {onAnalyzeOwn && mode === "demo" && (
-        <div className="rounded-card border border-line bg-surface shadow-card px-6 py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[15px] font-semibold text-ink">Want to run this on your own workflow?</p>
-            <p className="mt-1 text-[13px] text-ink-soft">Takes about 2 minutes. Describe your process and get a full diagnostic report.</p>
-          </div>
-          <button
-            type="button"
-            onClick={onAnalyzeOwn}
-            className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 text-[14px] font-semibold text-white shadow-btn transition hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-          >
-            Analyze my workflow →
-          </button>
-        </div>
-      )}
+      </div>
+
+      {/* ── NEXT STEPS CTA CLUSTER ── */}
+      <div id="section-next" style={{ scrollMarginTop: 96 }}>
+        <NextStepsCTA
+          onAnalyzeOwn={onAnalyzeOwn}
+          onRestart={onRestart}
+          mode={mode}
+          onCopyReport={onCopyReport}
+          onSaveReport={onSaveReport}
+          onEmailReport={onEmailReport}
+          emailed={reportEmailed}
+          copied={reportCopied}
+          saved={reportSaved}
+        />
+      </div>
 
     </div>
   );
