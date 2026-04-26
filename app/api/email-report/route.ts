@@ -1,8 +1,13 @@
 import { Resend } from "resend";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 
+export const runtime = "nodejs";
 export const maxDuration = 30;
+
+const SENDER_PHOTO_CID = "sender-photo";
 
 function e(s: string): string {
   return s
@@ -54,11 +59,11 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
     month: "long",
     day: "numeric",
   });
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
   const sender = loadSenderProfile();
-  const photoUrl = sender && sender.photoFile && siteUrl
-    ? `${siteUrl}/${sender.photoFile.replace(/^\//, "")}`
-    : "";
+  // Reference the photo via a CID so the recipient's mail client renders it
+  // inline without needing to fetch a remote URL (which Gmail/Outlook block by default).
+  // The matching attachment is added in POST() below.
+  const photoUrl = sender && sender.photoFile ? `cid:${SENDER_PHOTO_CID}` : "";
 
   const sectionHead = (letter: string, title: string) =>
     `<tr><td style="padding:32px 0 8px">
@@ -325,6 +330,57 @@ export async function POST(request: Request): Promise<Response> {
     (process.env.RESEND_FROM_EMAIL ?? "").trim() ||
     "Operator Agent <onboarding@resend.dev>";
 
+  // Load the sender photo and attach it inline (CID) so it renders in clients
+  // that block remote images. We try the local filesystem first (works in dev
+  // and when /public is bundled into the serverless function), and fall back
+  // to fetching from NEXT_PUBLIC_SITE_URL (works on any deploy where the
+  // static asset is reachable). All failures are non-fatal.
+  const photoFile = (process.env.SENDER_PHOTO_FILE ?? "").trim();
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
+  const attachments: Array<{
+    filename: string;
+    content: string;
+    contentId: string;
+    contentType?: string;
+  }> = [];
+  if (photoFile) {
+    const safeName = photoFile.replace(/^\/+/, "").split(/[\\/]/).pop() ?? "";
+    if (safeName) {
+      const ext = path.extname(safeName).toLowerCase();
+      const contentType =
+        ext === ".png" ? "image/png" :
+        ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" :
+        ext === ".gif" ? "image/gif" :
+        ext === ".webp" ? "image/webp" :
+        "application/octet-stream";
+      let base64: string | null = null;
+      try {
+        const buf = await readFile(path.join(process.cwd(), "public", safeName));
+        base64 = buf.toString("base64");
+      } catch {
+        if (siteUrl) {
+          try {
+            const res = await fetch(`${siteUrl}/${safeName}`);
+            if (res.ok) {
+              const ab = await res.arrayBuffer();
+              base64 = Buffer.from(ab).toString("base64");
+            }
+          } catch {
+            // Non-fatal — send without the inline photo.
+          }
+        }
+      }
+      if (base64) {
+        attachments.push({
+          filename: safeName,
+          content: base64,
+          contentId: SENDER_PHOTO_CID,
+          contentType,
+        });
+      }
+    }
+  }
+
   // Send the report. Replies route to OWNER_EMAIL since the From address is no-reply.
   const { error } = await resend.emails.send({
     from: fromAddress,
@@ -332,6 +388,7 @@ export async function POST(request: Request): Promise<Response> {
     replyTo: ownerEmail || undefined,
     subject,
     html,
+    attachments: attachments.length ? attachments : undefined,
   });
 
   if (error) {

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" rx="40" fill="#B8472A"/>
+  <text x="90" y="90"
+        text-anchor="middle"
+        dominant-baseline="central"
+        font-family="'Instrument Serif', 'Cormorant Garamond', Georgia, 'Times New Roman', serif"
+        font-style="italic"
+        font-weight="400"
+        font-size="124"
+        fill="#FBFAF6">O</text>
+</svg>
