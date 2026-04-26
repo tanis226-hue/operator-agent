@@ -224,10 +224,11 @@ export async function runFastPipeline(
 
   onEvent({ event: "phase", phase: "synthesize", status: "running", label: SYNTH_LABEL });
 
-  // Single Claude call producing the full payload.
+  // Single Claude call producing the full payload. Cap output tokens to
+  // keep wall time well under the 26s sync-function budget on Netlify Pro.
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   });

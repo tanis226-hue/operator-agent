@@ -11,16 +11,16 @@ import { runFastPipeline } from "@/lib/fastPipeline";
 
 export const maxDuration = 120;
 
-// On platforms with short function timeouts (Netlify Functions ≈ 26s), the
-// 4-call Opus pipeline can't finish before the connection is killed, which
-// surfaces as ERR_HTTP2_PROTOCOL_ERROR mid-stream. Set OPSADVISOR_FAST_MODE=1
-// to fall back to a single Sonnet 4.5 call that fits inside that budget.
+// On platforms with short function timeouts (Netlify Functions = 10s
+// streaming / 26s sync), the 4-call Opus pipeline can't finish before the
+// connection is killed, which surfaces as ERR_HTTP2_PROTOCOL_ERROR mid-stream.
+// Fast mode runs a single Sonnet call that fits inside the sync budget.
+//
+// Default: ON. Local dev / Vercel can opt out with OPSADVISOR_FAST_MODE=0.
 function isFastMode(): boolean {
   const v = (process.env.OPSADVISOR_FAST_MODE ?? "").trim().toLowerCase();
-  if (v === "1" || v === "true" || v === "yes") return true;
   if (v === "0" || v === "false" || v === "no") return false;
-  // Auto-enable on Netlify (NETLIFY=true is set in their build/runtime env).
-  return (process.env.NETLIFY ?? "").toLowerCase() === "true";
+  return true;
 }
 
 // Next.js gives shell env vars higher priority than .env.local, so if a
@@ -127,9 +127,16 @@ function serializeEvent(event: PipelineEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
-const SSE_HEADERS = {
+const SSE_HEADERS_STREAM = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
+  "X-OpsAdvisor-Mode": "stream",
+} as const;
+
+const SSE_HEADERS_BUFFERED = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  "X-OpsAdvisor-Mode": "fast",
 } as const;
 
 export async function POST(request: Request): Promise<Response> {
@@ -153,7 +160,7 @@ export async function POST(request: Request): Promise<Response> {
               message:
                 "Custom case is missing required fields (business name, pain point, success metric).",
             }),
-            { headers: SSE_HEADERS }
+            { headers: SSE_HEADERS_BUFFERED }
           );
         }
       }
@@ -166,7 +173,7 @@ export async function POST(request: Request): Promise<Response> {
           event: "error",
           message: "Could not parse custom case payload as JSON.",
         }),
-        { headers: SSE_HEADERS }
+        { headers: SSE_HEADERS_BUFFERED }
       );
     }
   }
@@ -178,7 +185,7 @@ export async function POST(request: Request): Promise<Response> {
         message:
           "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
       }),
-      { headers: SSE_HEADERS }
+      { headers: SSE_HEADERS_BUFFERED }
     );
   }
 
@@ -209,7 +216,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const body = buffered.map(serializeEvent).join("");
-    return new Response(body, { headers: SSE_HEADERS });
+    return new Response(body, { headers: SSE_HEADERS_BUFFERED });
   }
 
   // Streaming path (Vercel / local dev): emit events incrementally.
@@ -250,5 +257,5 @@ export async function POST(request: Request): Promise<Response> {
     }
   })();
 
-  return new Response(readable, { headers: SSE_HEADERS });
+  return new Response(readable, { headers: SSE_HEADERS_STREAM });
 }
