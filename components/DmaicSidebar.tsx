@@ -50,6 +50,12 @@ export function DmaicSidebar({ visible = true }: Props) {
         );
       if (!present.length) return;
 
+      // Edge case: at very top of page → always highlight the first section.
+      if (window.scrollY < 10) {
+        setActiveId(present[0].s.id);
+        return;
+      }
+
       // Edge case: at very bottom of page → force last section.
       const scrollBottom = window.innerHeight + window.scrollY;
       const docHeight = document.documentElement.scrollHeight;

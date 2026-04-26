@@ -1,6 +1,6 @@
 # OpsAdvisor
 
-OpsAdvisor is a single-page operations advisor that helps a non-technical business owner diagnose where a workflow is leaking, identify the highest-impact operational fix, and leave behind controls (dashboard, alerts, SOP) to make the improvement stick.
+OpsAdvisor is an operations advisor that helps business owners and administrators diagnose where a workflow is leaking, identify the highest-impact operational fix, and leave behind controls (dashboard, alerts, SOP) to make the improvement stick.
 
 > Built by David Tanis for the _Built with Opus 4.7_ hackathon by Anthropic. Powered by **Claude Opus 4.7**.
 

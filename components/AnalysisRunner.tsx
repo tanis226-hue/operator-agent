@@ -643,6 +643,7 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
     if (isRunning) return;
     setMode(next);
     setErrorMsg("");
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 
     if (next === "demo") {
       // Auto-load pre-generated demo result, same as instantDemo path

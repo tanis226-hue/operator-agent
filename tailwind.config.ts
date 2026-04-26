@@ -31,27 +31,27 @@ const config: Config = {
         accent: {
           DEFAULT: "#B8472A",
           hover:   "#8E3416",
-          soft:    "#F0E1D6",
-          border:  "#D4927A", // muted terracotta for subtle borders
+          soft:    "#F7F1ED",   // very light, clean neutral
+          border:  "#DCC8BD",   // softer border
         },
 
         // ─── Functional palette ──────────────────────────────────
         ochre: {
           DEFAULT: "#B8893A",
-          soft:    "#F5EDD8",   // lighter ochre wash
-          border:  "#D9C38A",   // muted gold border
+          soft:    "#F9F5E8",   // very light, clean neutral
+          border:  "#E5D9C0",   // softer border
           ink:     "#7A5C28",   // warm amber-brown
         },
         moss: {
           DEFAULT: "#5C6E3F",
-          soft:    "#E8ECDA",
-          border:  "#B5BC9C",
+          soft:    "#F3F4ED",   // very light, barely tinted
+          border:  "#D0D5C5",   // softer border
           ink:     "#3D4A29",
         },
         rust: {
           DEFAULT: "#8E3416",
-          soft:    "#F6E8E2",   // lighter, less pink
-          border:  "#DBBBA8",   // very muted border
+          soft:    "#F9F2ED",   // very light, clean neutral
+          border:  "#E5D0C8",   // softer border
           ink:     "#7D4535",   // warm brown, not bright red
         },
       },

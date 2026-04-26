@@ -7,7 +7,7 @@
 **Build context:** Built for the “Built with Opus 4.7: a Claude Code hackathon”  
 **Build mode:** Lean, solo-buildable, hackathon-ready MVP
 
-Operator Agent is a buyer-centered operational diagnosis and improvement product. It takes a business problem, a structured context brief, and a small set of process evidence, then runs a full DMAIC-style improvement loop from intake to control.
+Operator Agent is an operational diagnosis and improvement product built for business owners and operators. It takes a business problem, a structured context brief, and a small set of process evidence, then runs a full DMAIC-style improvement loop from intake to control.
 
 For the MVP, Operator Agent is focused on a single workflow: **Lead Intake and Conversion Bottleneck**. The product analyzes where leads are stalling or dropping out, identifies the highest-impact operational breakdown, recommends the most practical fix, and leaves behind a control package so the issue does not return.
 

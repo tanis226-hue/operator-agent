@@ -35,11 +35,11 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
       className="relative overflow-hidden rounded-card border border-accent/30 bg-surface shadow-card-lg"
     >
       {/* Accent top stripe */}
-      <div className="h-[3px] w-full bg-accent/60" />
+      <div className="h-[3px] w-full bg-accent/30" />
 
       {/* Header */}
       <div className="border-b border-line px-6 py-4">
-        <p className="eyebrow text-accent mb-1">Owner View</p>
+        <p className="eyebrow text-ink-muted mb-1">Owner View</p>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-[17px] font-semibold text-ink">Monday Morning Brief</h2>
           <span className="text-[12px] text-ink-muted">
@@ -56,13 +56,13 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
             <p className="eyebrow mb-1.5">What's broken</p>
             <p className="text-[14px] font-medium leading-snug text-ink">{problem}</p>
           </div>
-          <div className="rounded-lg border border-rust-border bg-rust-soft px-4 py-3 flex flex-col gap-1">
-            <p className="eyebrow text-rust-ink">Revenue at risk</p>
-            <p className="text-[22px] font-bold tabular-nums text-rust-ink leading-tight">
+          <div className="rounded-lg border border-line bg-surface px-4 py-3 flex flex-col gap-1">
+            <p className="eyebrow text-ink-muted">Revenue at risk</p>
+            <p className="text-[22px] font-bold tabular-nums text-ink leading-tight">
               {displayAtRisk}
             </p>
             {atRiskSub && (
-              <p className="text-[11px] text-rust-ink/70 leading-snug">{atRiskSub}</p>
+              <p className="text-[11px] text-ink-muted leading-snug">{atRiskSub}</p>
             )}
           </div>
         </div>
@@ -81,7 +81,7 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
                   key={i}
                   className="flex items-start gap-3 rounded-lg border border-line bg-surface px-4 py-3"
                 >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-[10px] font-bold text-accent">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line bg-canvas text-[10px] font-bold text-ink-soft">
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -109,8 +109,8 @@ export function OwnerBriefCard({ ownerBrief, analysis }: Props) {
         </div>
 
         {/* Row 3: Monday morning next step */}
-        <div className="bg-accent-soft px-6 py-4">
-          <p className="eyebrow text-accent mb-1.5">What to do Monday morning</p>
+        <div className="bg-canvas px-6 py-4">
+          <p className="eyebrow text-ink-muted mb-1.5">What to do Monday morning</p>
           <p className="text-[14px] font-medium leading-snug text-ink">{nextDecision}</p>
         </div>
 
