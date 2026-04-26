@@ -1,13 +1,21 @@
 import { Resend } from "resend";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { GeneratedOutputPayload } from "@/lib/outputTypes";
 import type { IntakeBrief } from "@/lib/intakeBrief";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SENDER_PHOTO_CID = "sender-photo";
+function resolveSenderPhotoUrl(): string {
+  // Prefer an explicit absolute URL when provided. Otherwise derive from the
+  // public site origin + filename. Returning an empty string means "no photo"
+  // and the signature renders without an avatar.
+  const override = (process.env.SENDER_PHOTO_URL ?? "").trim();
+  if (override) return override;
+  const file = (process.env.SENDER_PHOTO_FILE ?? "").trim().replace(/^\/+/, "");
+  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
+  if (file && site) return `${site}/${file}`;
+  return "";
+}
 
 function e(s: string): string {
   return s
@@ -60,10 +68,11 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
     day: "numeric",
   });
   const sender = loadSenderProfile();
-  // Reference the photo via a CID so the recipient's mail client renders it
-  // inline without needing to fetch a remote URL (which Gmail/Outlook block by default).
-  // The matching attachment is added in POST() below.
-  const photoUrl = sender && sender.photoFile ? `cid:${SENDER_PHOTO_CID}` : "";
+  // Reference the headshot by absolute URL so the recipient sees the
+  // full-resolution source rendered crisply inline. Using a CID attachment
+  // would also surface the image as a separate "david-tanis.png" file in
+  // Gmail/Outlook's attachment area, which we don't want.
+  const photoUrl = sender ? resolveSenderPhotoUrl() : "";
 
   const sectionHead = (letter: string, title: string) =>
     `<tr><td style="padding:32px 0 8px">
@@ -263,7 +272,7 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
           <table cellpadding="0" cellspacing="0" style="border-collapse:collapse">
             <tr>
               ${photoUrl ? `<td style="vertical-align:top;padding-right:20px;width:84px">
-                <img src="${e(photoUrl)}" alt="${e(sender.name)}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:2px solid #f0d5c8;object-fit:cover" />
+                <img src="${e(photoUrl)}" alt="${e(sender.name)}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:1px solid #f0d5c8;object-fit:cover;-ms-interpolation-mode:bicubic" />
               </td>` : ""}
               <td style="vertical-align:top">
                 <p style="margin:0;font-size:15px;font-weight:700;color:#1a1a1a;font-style:italic;font-family:Georgia,'Times New Roman',serif">${e(sender.name)}${sender.credentials ? `<span style="font-style:normal;font-weight:400;font-size:11px;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:.04em">&nbsp;&nbsp;${e(sender.credentials)}</span>` : ""}</p>
@@ -330,65 +339,15 @@ export async function POST(request: Request): Promise<Response> {
     (process.env.RESEND_FROM_EMAIL ?? "").trim() ||
     "Operator Agent <onboarding@resend.dev>";
 
-  // Load the sender photo and attach it inline (CID) so it renders in clients
-  // that block remote images. We try the local filesystem first (works in dev
-  // and when /public is bundled into the serverless function), and fall back
-  // to fetching from NEXT_PUBLIC_SITE_URL (works on any deploy where the
-  // static asset is reachable). All failures are non-fatal.
-  const photoFile = (process.env.SENDER_PHOTO_FILE ?? "").trim();
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
-  const attachments: Array<{
-    filename: string;
-    content: string;
-    contentId: string;
-    contentType?: string;
-  }> = [];
-  if (photoFile) {
-    const safeName = photoFile.replace(/^\/+/, "").split(/[\\/]/).pop() ?? "";
-    if (safeName) {
-      const ext = path.extname(safeName).toLowerCase();
-      const contentType =
-        ext === ".png" ? "image/png" :
-        ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" :
-        ext === ".gif" ? "image/gif" :
-        ext === ".webp" ? "image/webp" :
-        "application/octet-stream";
-      let base64: string | null = null;
-      try {
-        const buf = await readFile(path.join(process.cwd(), "public", safeName));
-        base64 = buf.toString("base64");
-      } catch {
-        if (siteUrl) {
-          try {
-            const res = await fetch(`${siteUrl}/${safeName}`);
-            if (res.ok) {
-              const ab = await res.arrayBuffer();
-              base64 = Buffer.from(ab).toString("base64");
-            }
-          } catch {
-            // Non-fatal — send without the inline photo.
-          }
-        }
-      }
-      if (base64) {
-        attachments.push({
-          filename: safeName,
-          content: base64,
-          contentId: SENDER_PHOTO_CID,
-          contentType,
-        });
-      }
-    }
-  }
-
   // Send the report. Replies route to OWNER_EMAIL since the From address is no-reply.
+  // The headshot is referenced by absolute URL inside the HTML, so no inline
+  // attachments are needed.
   const { error } = await resend.emails.send({
     from: fromAddress,
     to: [email],
     replyTo: ownerEmail || undefined,
     subject,
     html,
-    attachments: attachments.length ? attachments : undefined,
   });
 
   if (error) {
