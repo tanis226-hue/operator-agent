@@ -320,8 +320,6 @@ export async function POST(request: Request): Promise<Response> {
     "Operator Agent <onboarding@resend.dev>";
 
   // Send the report. Replies route to OWNER_EMAIL since the From address is no-reply.
-  // The headshot is referenced by absolute URL inside the HTML, so no inline
-  // attachments are needed.
   const { error } = await resend.emails.send({
     from: fromAddress,
     to: [email],
