@@ -268,7 +268,7 @@ export function LandingHero({ onDemo, onStart, onPreset }: { onDemo: () => void;
             Sample diagnoses
           </div>
           <h2 className="h-section" style={{ margin: 0 }}>
-            Three operations examined end-to-end.
+            Four operations examined end-to-end.
           </h2>
           <p className="mt-1.5 text-[14px]" style={{ color: "var(--ink-2)" }}>
             Each case below was run on representative data. Click the active case to open it as a demo.
@@ -350,8 +350,8 @@ function CaseCard({
         textAlign: "left",
         background: accent ? "var(--surface)" : "var(--paper-2)",
         border: `1px solid ${accent ? "var(--line-soft)" : "transparent"}`,
-        borderRadius: 16,
-        padding: "20px 22px 18px",
+        borderRadius: 14,
+        padding: "14px 16px 13px",
         cursor: isClickable ? "pointer" : "default",
         position: "relative",
         transition: "transform 240ms cubic-bezier(.34,1.56,.64,1), box-shadow 240ms ease",
@@ -376,11 +376,11 @@ function CaseCard({
           : "0 1px 3px rgba(26,23,20,.03), 0 6px 16px -6px rgba(26,23,20,.07)";
       }}
     >
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-2.5 flex items-center justify-between">
         <span
           className="uppercase-mono rounded-full border px-2 py-0.5"
           style={{
-            fontSize: 11,
+            fontSize: 10,
             letterSpacing: "0.10em",
             background: accent ? "var(--accent-soft)" : "var(--surface)",
             color: accent ? "var(--accent)" : "var(--ink-3)",
@@ -389,21 +389,21 @@ function CaseCard({
         >
           {kicker}
         </span>
-        <span className="uppercase-mono" style={{ fontSize: 11, letterSpacing: "0.10em", color: "var(--ink-4)" }}>
+        <span className="uppercase-mono" style={{ fontSize: 10, letterSpacing: "0.10em", color: "var(--ink-4)" }}>
           {win}
         </span>
       </div>
-      <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.3, marginBottom: 18 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.3, marginBottom: 10 }}>
         {title}
       </div>
-      <div className="uppercase-mono mb-1.5" style={{ fontSize: 11, letterSpacing: "0.10em", color: "var(--ink-3)" }}>
+      <div className="uppercase-mono mb-1" style={{ fontSize: 10, letterSpacing: "0.10em", color: "var(--ink-3)" }}>
         {metric}
       </div>
-      <div className="flex items-baseline gap-2.5">
+      <div className="flex items-baseline gap-2">
         <span
           className="serif tabular"
           style={{
-            fontSize: 24,
+            fontSize: 18,
             color: "var(--rust)",
             textDecoration: "line-through",
             textDecorationColor: "var(--rust)",
@@ -411,11 +411,11 @@ function CaseCard({
         >
           {from}
         </span>
-        <span className="mono" style={{ fontSize: 13, color: "var(--ink-3)" }}>→</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>→</span>
         <span
           className="serif tabular"
           style={{
-            fontSize: 30,
+            fontSize: 22,
             color: "var(--moss)",
             letterSpacing: "-0.02em",
           }}
@@ -424,9 +424,9 @@ function CaseCard({
         </span>
       </div>
       {isClickable && (
-        <div className="mt-4 flex items-center gap-2" style={{ fontSize: 12, color: "var(--ink-2)" }}>
+        <div className="mt-2.5 flex items-center gap-2" style={{ fontSize: 11, color: "var(--ink-2)" }}>
           Open the case{" "}
-          <span className="serif italic" style={{ fontSize: 16 }}>→</span>
+          <span className="serif italic" style={{ fontSize: 14 }}>→</span>
         </div>
       )}
     </button>

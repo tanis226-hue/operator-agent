@@ -82,29 +82,31 @@ export function NextStepsCTA({
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-4">
           {showAnalyzeOwn && (
             <CTAButton
-              label="Analyze your own data"
+              label="Analyze your own workflow"
               sub="Describe your process · ~2 min"
               onClick={onAnalyzeOwn}
               variant="primary"
             />
           )}
-          {showRestart && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {showRestart && (
+              <CTAButton
+                label="Run another diagnosis"
+                sub="Try a different operation"
+                onClick={onRestart}
+                variant="secondary"
+              />
+            )}
             <CTAButton
-              label="Run another diagnosis"
-              sub="Try a different operation"
-              onClick={onRestart}
+              label="Join the waitlist"
+              sub="Get notified when we open up"
+              onClick={() => setWaitlistOpen(true)}
               variant="secondary"
             />
-          )}
-          <CTAButton
-            label="Join the waitlist"
-            sub="Get notified when we open up"
-            onClick={() => setWaitlistOpen(true)}
-            variant="secondary"
-          />
+          </div>
         </div>
       </div>
 

@@ -684,16 +684,14 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
 
   return (
     <>
-      {/* Case-source toggle — hidden in instant demo mode (pre-generated) to reduce chrome */}
-      {!(instantDemo && result?.usedFallback) && (
-        <CaseModeToggle
-          mode={mode}
-          onChange={handleModeChange}
-          disabled={isRunning}
-          onCopyFromDemo={() => setCustomBrief(brief)}
-          showCopyFromDemo={mode === "custom"}
-        />
-      )}
+      {/* Case-source toggle — always visible for easy switching between demo and custom modes */}
+      <CaseModeToggle
+        mode={mode}
+        onChange={handleModeChange}
+        disabled={isRunning}
+        onCopyFromDemo={() => setCustomBrief(brief)}
+        showCopyFromDemo={mode === "custom"}
+      />
 
       {/* Demo context — grounding one-liner shown when instant demo is active */}
       {instantDemo && mode === "demo" && (
