@@ -114,9 +114,7 @@ The personalized "A note from …" block at the bottom of the report email is **
 | `SENDER_WEBSITE` | Website URL. |
 | `SENDER_WEBSITE_LABEL` | Optional display label for the website link. |
 | `SENDER_LINKEDIN` | LinkedIn profile URL. |
-| `SENDER_PHOTO_FILE` | Filename inside `/public` for the headshot (e.g. `david-tanis.png`). The email references the photo at `${NEXT_PUBLIC_SITE_URL}/${SENDER_PHOTO_FILE}`, so `NEXT_PUBLIC_SITE_URL` must also be set for the image to render. |
-| `SENDER_PHOTO_URL` | Optional absolute URL override for the headshot (e.g. `https://opsadvisor.netlify.app/david-tanis.png`). Takes precedence over `SENDER_PHOTO_FILE` + `NEXT_PUBLIC_SITE_URL`. |
-| `NEXT_PUBLIC_SITE_URL` | Public origin of the deployed site (e.g. `https://opsadvisor.netlify.app`). Used to resolve the sender photo URL when `SENDER_PHOTO_URL` is unset. |
+
 | `SENDER_NOTE_INTRO` | Heading for the note block. Defaults to `A note from <first name>`. |
 | `SENDER_NOTE_BODY` | Body paragraph of the personal note. |
 

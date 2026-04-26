@@ -5,18 +5,6 @@ import type { IntakeBrief } from "@/lib/intakeBrief";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-function resolveSenderPhotoUrl(): string {
-  // Prefer an explicit absolute URL when provided. Otherwise derive from the
-  // public site origin + filename. Returning an empty string means "no photo"
-  // and the signature renders without an avatar.
-  const override = (process.env.SENDER_PHOTO_URL ?? "").trim();
-  if (override) return override;
-  const file = (process.env.SENDER_PHOTO_FILE ?? "").trim().replace(/^\/+/, "");
-  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/$/, "");
-  if (file && site) return `${site}/${file}`;
-  return "";
-}
-
 function e(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -35,7 +23,6 @@ type SenderProfile = {
   website: string;
   websiteLabel: string;
   linkedin: string;
-  photoFile: string;
   noteIntro: string;
   noteBody: string;
 };
@@ -46,6 +33,14 @@ function loadSenderProfile(): SenderProfile | null {
   // Both name and email are required to render the signature block.
   // If either is missing, the signature is omitted entirely.
   if (!name || !email) return null;
+  const firstName = name.split(" ")[0];
+  // A polished default note body — personable, brief, and ends with an open
+  // door. Used when SENDER_NOTE_BODY is not set in env.
+  const defaultNoteBody =
+    `Thanks for trying OpsAdvisor. The report above is a starting point, not a verdict — ` +
+    `the real value shows up when an operator pushes back on it. ` +
+    `If anything here sparks a question or you want a second pair of eyes on the workflow, just reply. ` +
+    `I read every message myself.`;
   return {
     name,
     credentials: (process.env.SENDER_CREDENTIALS ?? "").trim(),
@@ -55,9 +50,8 @@ function loadSenderProfile(): SenderProfile | null {
     website: (process.env.SENDER_WEBSITE ?? "").trim(),
     websiteLabel: (process.env.SENDER_WEBSITE_LABEL ?? "").trim(),
     linkedin: (process.env.SENDER_LINKEDIN ?? "").trim(),
-    photoFile: (process.env.SENDER_PHOTO_FILE ?? "").trim(),
-    noteIntro: (process.env.SENDER_NOTE_INTRO ?? `A note from ${name.split(" ")[0]}`).trim(),
-    noteBody: (process.env.SENDER_NOTE_BODY ?? "").trim(),
+    noteIntro: (process.env.SENDER_NOTE_INTRO ?? `A note from ${firstName}`).trim(),
+    noteBody: (process.env.SENDER_NOTE_BODY ?? defaultNoteBody).trim(),
   };
 }
 
@@ -68,11 +62,6 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
     day: "numeric",
   });
   const sender = loadSenderProfile();
-  // Reference the headshot by absolute URL so the recipient sees the
-  // full-resolution source rendered crisply inline. Using a CID attachment
-  // would also surface the image as a separate "david-tanis.png" file in
-  // Gmail/Outlook's attachment area, which we don't want.
-  const photoUrl = sender ? resolveSenderPhotoUrl() : "";
 
   const sectionHead = (letter: string, title: string) =>
     `<tr><td style="padding:32px 0 8px">
@@ -268,26 +257,17 @@ function buildEmailHtml(brief: IntakeBrief, g: GeneratedOutputPayload): string {
         <!-- Personal note from sender (only rendered when SENDER_NAME and SENDER_EMAIL are set) -->
         ${sender ? `<tr><td style="padding:36px 40px 8px">
           <p style="margin:0 0 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#C45C2E">${e(sender.noteIntro)}</p>
-          ${sender.noteBody ? `<p style="margin:0 0 22px;font-size:14px;color:#333;line-height:1.65">${e(sender.noteBody)}</p>` : ""}
-          <table cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-            <tr>
-              ${photoUrl ? `<td style="vertical-align:top;padding-right:20px;width:84px">
-                <img src="${e(photoUrl)}" alt="${e(sender.name)}" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:50%;border:1px solid #f0d5c8;object-fit:cover;-ms-interpolation-mode:bicubic" />
-              </td>` : ""}
-              <td style="vertical-align:top">
-                <p style="margin:0;font-size:15px;font-weight:700;color:#1a1a1a;font-style:italic;font-family:Georgia,'Times New Roman',serif">${e(sender.name)}${sender.credentials ? `<span style="font-style:normal;font-weight:400;font-size:11px;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:.04em">&nbsp;&nbsp;${e(sender.credentials)}</span>` : ""}</p>
-                ${sender.title ? `<p style="margin:3px 0 2px;font-size:12px;color:#666;letter-spacing:.01em">${e(sender.title)}</p>` : ""}
-                ${sender.tagline ? `<p style="margin:0 0 12px;font-size:11px;color:#999;letter-spacing:.01em">${e(sender.tagline)}</p>` : ""}
-                <p style="margin:0;font-size:12px;color:#666;line-height:1.6">
-                  <a href="mailto:${e(sender.email)}" style="color:#C45C2E;text-decoration:none">${e(sender.email)}</a>
-                  ${sender.website ? `<span style="color:#ccc;padding:0 6px">&middot;</span>
-                  <a href="${e(sender.website)}" style="color:#C45C2E;text-decoration:none">${e(sender.websiteLabel || sender.website.replace(/^https?:\/\//, ""))}</a>` : ""}
-                  ${sender.linkedin ? `<span style="color:#ccc;padding:0 6px">&middot;</span>
-                  <a href="${e(sender.linkedin)}" style="color:#C45C2E;text-decoration:none">LinkedIn</a>` : ""}
-                </p>
-              </td>
-            </tr>
-          </table>
+          ${sender.noteBody ? `<p style="margin:0 0 24px;font-size:14px;color:#333;line-height:1.65">${e(sender.noteBody)}</p>` : ""}
+          <p style="margin:0;font-size:15px;font-weight:700;color:#1a1a1a;font-style:italic;font-family:Georgia,'Times New Roman',serif">${e(sender.name)}${sender.credentials ? `<span style="font-style:normal;font-weight:400;font-size:11px;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:.04em">&nbsp;&nbsp;${e(sender.credentials)}</span>` : ""}</p>
+          ${sender.title ? `<p style="margin:3px 0 2px;font-size:12px;color:#666;letter-spacing:.01em">${e(sender.title)}</p>` : ""}
+          ${sender.tagline ? `<p style="margin:0 0 12px;font-size:11px;color:#999;letter-spacing:.01em">${e(sender.tagline)}</p>` : ""}
+          <p style="margin:10px 0 0;font-size:13px;color:#666;line-height:1.6">
+            <a href="mailto:${e(sender.email)}" style="color:#C45C2E;text-decoration:none;font-weight:500">${e(sender.email)}</a>
+            ${sender.website ? `<span style="color:#ccc;padding:0 8px">&middot;</span>
+            <a href="${e(sender.website)}" style="color:#C45C2E;text-decoration:none;font-weight:500">${e(sender.websiteLabel || sender.website.replace(/^https?:\/\//, ""))}</a>` : ""}
+            ${sender.linkedin ? `<span style="color:#ccc;padding:0 8px">&middot;</span>
+            <a href="${e(sender.linkedin)}" style="color:#C45C2E;text-decoration:none;font-weight:500">LinkedIn</a>` : ""}
+          </p>
         </td></tr>` : ""}
 
         <!-- Attribution -->
