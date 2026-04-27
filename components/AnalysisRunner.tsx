@@ -258,12 +258,16 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
       // UI animates phase transitions even when many events arrive at once.
       let consumed = 0;
       let terminalSeen = false;
-      // Hard cap: 15 minutes (matches Netlify Background Functions max).
-      const deadline = Date.now() + 15 * 60 * 1000;
+      let lastUpdatedAt = 0;
+      let lastProgressMs = Date.now();
+      // Hard cap: 10 minutes (background fn has 15 min; we bail earlier).
+      const deadline = Date.now() + 10 * 60 * 1000;
+      // If no state progress for 90s, the background fn likely crashed.
+      const STALE_MS = 90_000;
 
       while (!terminalSeen) {
         if (Date.now() > deadline) {
-          throw new Error("Analysis timed out after 15 minutes. Please retry.");
+          throw new Error("Analysis timed out. The pipeline is taking too long — please retry.");
         }
         await new Promise((r) => setTimeout(r, 2000));
 
@@ -285,7 +289,26 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
           pipelineLog?: PipelineLog;
           usedFallback?: boolean;
           errorMessage?: string;
+          updatedAt?: number;
         };
+
+        // Stale-job detection: if `updatedAt` hasn't moved in 90s and the
+        // job hasn't reached a terminal state, the background function
+        // crashed silently. Surface an actionable error.
+        if (data.updatedAt && data.updatedAt !== lastUpdatedAt) {
+          lastUpdatedAt = data.updatedAt;
+          lastProgressMs = Date.now();
+        }
+        if (
+          data.status !== "done" &&
+          data.status !== "error" &&
+          lastUpdatedAt > 0 &&
+          Date.now() - lastProgressMs > STALE_MS
+        ) {
+          throw new Error(
+            "Analysis stalled — the background worker stopped responding. Please retry."
+          );
+        }
 
         // Apply any new events to the phase UI.
         const newEvents = data.events.slice(consumed);
