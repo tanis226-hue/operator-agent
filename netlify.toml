@@ -1,0 +1,6 @@
+[functions]
+  node_bundler = "esbuild"
+
+# Background function reads job inputs from Netlify Blobs (seeded by the
+# /api/run-analysis Next.js route), so it doesn't need the data/ folder.
+# Lib helpers are imported via relative paths and esbuild bundles them in.

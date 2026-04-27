@@ -240,42 +240,62 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
     try { sessionStorage.removeItem(ANALYSIS_SESSION_KEY); } catch { /* ignore */ }
 
     try {
+      // 1. Kick off the job
       const init: RequestInit = { method: "POST" };
       if (mode === "custom") {
         init.headers = { "Content-Type": "application/json" };
         init.body = JSON.stringify({ brief: customBrief, processNote: customNote });
       }
+      const startRes = await fetch("/api/run-analysis", init);
+      if (!startRes.ok) {
+        const err = (await startRes.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error || `Failed to start analysis (status ${startRes.status})`);
+      }
+      const { jobId } = (await startRes.json()) as { jobId: string };
+      if (!jobId) throw new Error("Server did not return a jobId");
 
-      const res = await fetch("/api/run-analysis", init);
-      if (!res.body) throw new Error("No response body");
+      // 2. Poll for events. Track which event indices we've consumed so the
+      // UI animates phase transitions even when many events arrive at once.
+      let consumed = 0;
+      let terminalSeen = false;
+      // Hard cap: 15 minutes (matches Netlify Background Functions max).
+      const deadline = Date.now() + 15 * 60 * 1000;
 
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer    = "";
+      while (!terminalSeen) {
+        if (Date.now() > deadline) {
+          throw new Error("Analysis timed out after 15 minutes. Please retry.");
+        }
+        await new Promise((r) => setTimeout(r, 2000));
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        let statusRes: Response;
+        try {
+          statusRes = await fetch(`/api/analysis-status?jobId=${encodeURIComponent(jobId)}`, {
+            cache: "no-store",
+          });
+        } catch {
+          // Transient network blip - keep polling.
+          continue;
+        }
+        if (!statusRes.ok) continue;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        const data = (await statusRes.json()) as {
+          status: "pending" | "running" | "done" | "error";
+          events: Array<Record<string, unknown>>;
+          generated?: GeneratedOutputPayload;
+          pipelineLog?: PipelineLog;
+          usedFallback?: boolean;
+          errorMessage?: string;
+        };
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr) continue;
-
-          let parsed: Record<string, unknown>;
-          try { parsed = JSON.parse(jsonStr) as Record<string, unknown>; }
-          catch { continue; }
-
+        // Apply any new events to the phase UI.
+        const newEvents = data.events.slice(consumed);
+        consumed = data.events.length;
+        for (const parsed of newEvents) {
           const eventType = parsed.event as string;
-
           if (eventType === "phase") {
-            const phase  = parsed.phase as string;
-            const status = parsed.status as "running" | "done";
-            const label   = parsed.label   as string | undefined;
+            const phase   = parsed.phase as string;
+            const status  = parsed.status as "running" | "done";
+            const label   = parsed.label as string | undefined;
             const summary = parsed.summary as string | undefined;
             const now = Date.now();
 
@@ -304,10 +324,31 @@ export function AnalysisRunner({ brief, externalBrief, externalNote, onRestart, 
             setTotalDurationMs(Date.now() - startMs);
             setState("done");
           } else if (eventType === "error") {
-            setErrorMsg(parsed.message as string);
+            setErrorMsg((parsed.message as string) || "Analysis failed.");
             setState("error");
             setBriefOpen(true);
           }
+        }
+
+        if (data.status === "done" || data.status === "error") {
+          // Belt-and-suspenders: if events array somehow didn't carry the
+          // terminal marker, fall back to the structured fields.
+          if (data.status === "done" && !result && data.generated) {
+            setResult({
+              analysis: undefined,
+              generated: data.generated,
+              pipelineLog: data.pipelineLog ?? [],
+              usedFallback: data.usedFallback,
+            });
+            setCompletedAt(new Date().toLocaleTimeString());
+            setTotalDurationMs(Date.now() - startMs);
+            setState("done");
+          } else if (data.status === "error" && data.errorMessage) {
+            setErrorMsg(data.errorMessage);
+            setState("error");
+            setBriefOpen(true);
+          }
+          terminalSeen = true;
         }
       }
     } catch (err) {

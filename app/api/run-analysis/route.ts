@@ -1,3 +1,12 @@
+// Job-creation endpoint. Creates a new analysis job, persists its inputs to
+// the job store, and dispatches the actual pipeline run.
+//
+//   - On Netlify: triggers /.netlify/functions/run-analysis-background which
+//     has a 15-minute execution budget. The background function does the
+//     work asynchronously while the client polls /api/analysis-status.
+//   - Elsewhere (local dev / Vercel): runs the pipeline in-process using
+//     a fire-and-forget Promise. Same poll contract from the client's POV.
+
 import fs from "fs";
 import path from "path";
 import { loadDataset, loadProcessNote } from "@/lib/loadDataset";
@@ -7,25 +16,16 @@ import type { IntakeBrief } from "@/lib/intakeBrief";
 import { runPipeline } from "@/lib/pipelinePhases";
 import type { PipelineEvent } from "@/lib/pipelinePhases";
 import { runGeneralPipeline } from "@/lib/generalPipeline";
-import { runFastPipeline } from "@/lib/fastPipeline";
+import {
+  saveJobInput,
+  saveJobState,
+  appendJobEvent,
+  newJobState,
+  hasNetlifyBackend,
+} from "@/lib/jobStore";
 
-export const maxDuration = 120;
+export const maxDuration = 30;
 
-// On platforms with short function timeouts (Netlify Functions = 10s
-// streaming / 26s sync), the 4-call Opus pipeline can't finish before the
-// connection is killed, which surfaces as ERR_HTTP2_PROTOCOL_ERROR mid-stream.
-// Fast mode runs a single Sonnet call that fits inside the sync budget.
-//
-// Default: ON. Local dev / Vercel can opt out with OPSADVISOR_FAST_MODE=0.
-function isFastMode(): boolean {
-  const v = (process.env.OPSADVISOR_FAST_MODE ?? "").trim().toLowerCase();
-  if (v === "0" || v === "false" || v === "no") return false;
-  return true;
-}
-
-// Next.js gives shell env vars higher priority than .env.local, so if a
-// parent process injects an empty ANTHROPIC_API_KEY the file value is lost.
-// Read .env.local directly as a fallback so the server always finds the key.
 function ensureApiKey(): void {
   if ((process.env.ANTHROPIC_API_KEY ?? "").trim()) return;
   try {
@@ -39,7 +39,7 @@ function ensureApiKey(): void {
       }
     }
   } catch {
-    // .env.local absent or unreadable — key stays empty
+    // .env.local absent or unreadable
   }
 }
 
@@ -61,7 +61,6 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
   const num = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) ? v : null;
 
-  // Allow legacy clients that still send `slaConstraint`.
   const slaTextRaw = str(o.slaText) || str(o.slaConstraint);
 
   const VALID_INDUSTRIES = new Set([
@@ -107,7 +106,6 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
     return null;
   }
 
-  // Sensible fallbacks for optional fields the prompt still references.
   if (brief.currentStages.length === 0) {
     brief.currentStages = DEMO_INTAKE_BRIEF.currentStages;
   }
@@ -123,24 +121,69 @@ function sanitizeBrief(input: unknown): IntakeBrief | null {
   return brief;
 }
 
-function serializeEvent(event: PipelineEvent): string {
-  return `data: ${JSON.stringify(event)}\n\n`;
+function makeJobId(): string {
+  // Short random id - 16 hex chars. crypto.randomUUID would also work.
+  const buf = new Uint8Array(8);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const SSE_HEADERS_STREAM = {
-  "Content-Type": "text/event-stream",
-  "Cache-Control": "no-cache",
-  "X-OpsAdvisor-Mode": "stream",
-} as const;
+function siteOrigin(req: Request): string {
+  // Prefer the explicit env var (set in Netlify UI), fall back to the
+  // forwarded host on the incoming request, finally to the URL Origin.
+  const envUrl = (process.env.URL ?? process.env.DEPLOY_URL ?? "").trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
 
-const SSE_HEADERS_BUFFERED = {
-  "Content-Type": "text/event-stream",
-  "Cache-Control": "no-cache",
-  "X-OpsAdvisor-Mode": "fast",
-} as const;
+  const forwardedHost = req.headers.get("x-forwarded-host");
+  const forwardedProto = req.headers.get("x-forwarded-proto") ?? "https";
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+
+  try {
+    const u = new URL(req.url);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return "";
+  }
+}
+
+async function runInProcess(jobId: string): Promise<void> {
+  // Fallback path used outside Netlify. Same shape as the background fn.
+  const { loadJobInput } = await import("@/lib/jobStore");
+  const input = await loadJobInput(jobId);
+  if (!input) {
+    await appendJobEvent(jobId, {
+      event: "error",
+      message: "Job inputs missing.",
+    });
+    return;
+  }
+  const onEvent = (event: PipelineEvent): void => {
+    void appendJobEvent(jobId, event);
+  };
+  try {
+    if (input.isDemo && input.analysis) {
+      await runPipeline(input.brief, input.analysis, input.processNote, onEvent);
+    } else {
+      await runGeneralPipeline(input.brief, input.processNote, "", onEvent);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    onEvent({ event: "error", message });
+  }
+}
 
 export async function POST(request: Request): Promise<Response> {
-  // Parse optional custom-case body up front so JSON errors surface cleanly.
+  if (!hasApiKey()) {
+    return Response.json(
+      {
+        error:
+          "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
+      },
+      { status: 500 }
+    );
+  }
+
+  // Parse optional custom-case body.
   let briefOverride: IntakeBrief | null = null;
   let processNoteOverride: string | null = null;
 
@@ -154,13 +197,12 @@ export async function POST(request: Request): Promise<Response> {
       if (body.brief !== undefined) {
         briefOverride = sanitizeBrief(body.brief);
         if (!briefOverride) {
-          return new Response(
-            serializeEvent({
-              event: "error",
-              message:
+          return Response.json(
+            {
+              error:
                 "Custom case is missing required fields (business name, pain point, success metric).",
-            }),
-            { headers: SSE_HEADERS_BUFFERED }
+            },
+            { status: 400 }
           );
         }
       }
@@ -168,94 +210,60 @@ export async function POST(request: Request): Promise<Response> {
         processNoteOverride = body.processNote;
       }
     } catch {
-      return new Response(
-        serializeEvent({
-          event: "error",
-          message: "Could not parse custom case payload as JSON.",
-        }),
-        { headers: SSE_HEADERS_BUFFERED }
+      return Response.json(
+        { error: "Could not parse custom case payload as JSON." },
+        { status: 400 }
       );
     }
   }
 
-  if (!hasApiKey()) {
-    return new Response(
-      serializeEvent({
-        event: "error",
-        message:
-          "ANTHROPIC_API_KEY is not set. Add your key to .env.local to run live analysis.",
-      }),
-      { headers: SSE_HEADERS_BUFFERED }
-    );
-  }
-
+  // Assemble inputs.
   const processNote = processNoteOverride ?? loadProcessNote();
-  const fast = isFastMode();
+  const isDemo = !briefOverride;
+  const brief = briefOverride ?? DEMO_INTAKE_BRIEF;
+  const analysis = isDemo ? analyzePipeline(loadDataset().records) : null;
 
-  // Fast (non-streaming) path: collect all events, return as one buffered
-  // SSE-formatted response. Required on platforms whose streaming responses
-  // hard-cap at 10s (e.g. Netlify Functions). Sync functions get the full
-  // function timeout instead.
-  if (fast) {
-    const buffered: PipelineEvent[] = [];
-    const collect = (event: PipelineEvent): void => {
-      buffered.push(event);
-    };
+  // Persist job inputs and seed an empty state.
+  const jobId = makeJobId();
+  await saveJobInput(jobId, { brief, processNote, analysis, isDemo });
+  await saveJobState(jobId, newJobState());
 
+  // Dispatch.
+  if (hasNetlifyBackend()) {
+    const origin = siteOrigin(request);
+    const url = `${origin}/.netlify/functions/run-analysis-background`;
     try {
-      if (briefOverride) {
-        await runFastPipeline(briefOverride, processNote, null, collect);
-      } else {
-        const { records } = loadDataset();
-        const analysis = analyzePipeline(records);
-        await runFastPipeline(DEMO_INTAKE_BRIEF, processNote, analysis, collect);
+      // Fire-and-forget POST to the background function. We don't await its
+      // body because it returns 202 immediately.
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      if (!res.ok && res.status !== 202) {
+        const txt = await res.text().catch(() => "");
+        console.error(
+          `[run-analysis] background dispatch failed status=${res.status} body=${txt}`
+        );
+        await appendJobEvent(jobId, {
+          event: "error",
+          message: `Background dispatch failed (status ${res.status}).`,
+        });
+        return Response.json({ error: "Background dispatch failed" }, { status: 502 });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      buffered.push({ event: "error", message });
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[run-analysis] background dispatch error:`, msg);
+      await appendJobEvent(jobId, {
+        event: "error",
+        message: `Background dispatch error: ${msg}`,
+      });
+      return Response.json({ error: "Background dispatch error" }, { status: 502 });
     }
-
-    const body = buffered.map(serializeEvent).join("");
-    return new Response(body, { headers: SSE_HEADERS_BUFFERED });
+  } else {
+    // Non-Netlify: run in-process. Don't await - return jobId immediately.
+    void runInProcess(jobId);
   }
 
-  // Streaming path (Vercel / local dev): emit events incrementally.
-  const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-  let closed = false;
-
-  function emit(event: PipelineEvent): void {
-    if (closed) return;
-    void writer.write(encoder.encode(serializeEvent(event)));
-  }
-
-  async function safeClose(): Promise<void> {
-    if (closed) return;
-    closed = true;
-    try {
-      await writer.close();
-    } catch {
-      // Writer may already be closed if the client disconnected.
-    }
-  }
-
-  void (async () => {
-    try {
-      if (briefOverride) {
-        await runGeneralPipeline(briefOverride, processNote, "", emit);
-      } else {
-        const { records } = loadDataset();
-        const analysis = analyzePipeline(records);
-        await runPipeline(DEMO_INTAKE_BRIEF, analysis, processNote, emit);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      emit({ event: "error", message });
-    } finally {
-      await safeClose();
-    }
-  })();
-
-  return new Response(readable, { headers: SSE_HEADERS_STREAM });
+  return Response.json({ jobId });
 }
