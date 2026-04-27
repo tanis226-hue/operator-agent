@@ -1,5 +1,7 @@
 # OpsAdvisor
 
+**Live demo: <https://opsadvisor.netlify.app/>**
+
 OpsAdvisor is an operations advisor for any organization that runs a workflow — businesses, hospitals, schools, non-profits, and government agencies. It helps owners, administrators, and program leads diagnose where a workflow is leaking, identify the highest-impact operational fix, and leave behind controls (dashboard, alerts, SOP) to make the improvement stick.
 
 > Built by David Tanis for the _Built with Opus 4.7_ hackathon by Anthropic. Powered by **Claude Opus 4.7**.
@@ -95,6 +97,8 @@ Design/             Pure design scaffolding (not shipped)
 ---
 
 ## How to run locally
+
+Prefer no setup? Use the live deployment at <https://opsadvisor.netlify.app/>.
 
 1. Install dependencies:
    ```powershell
